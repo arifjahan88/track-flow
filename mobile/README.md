@@ -1,56 +1,69 @@
-# Welcome to your Expo app 👋
+# TrackFlow Mobile — Driver Cockpit & Fleet Command App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A complete, local-first **Vehicle & Fleet Management Mobile Application** built with **Expo SDK 58**, **React Native 0.88**, **Expo Router**, **TypeScript**, **React Native Reanimated v4**, **React Native Gesture Handler**, **Zustand v5**, **`@react-native-async-storage/async-storage`**, **`react-native-maps`**, and **`expo-location`**.
 
-## Get started
+Designed as the mobile companion to `/web`, TrackFlow Mobile delivers an **Uber Driver / Pathao Drive-inspired Real Street Map Cockpit** for drivers alongside full multi-role support for **Dispatchers**, **Fleet Managers**, **Mechanics**, and **Super Admins**.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## Key Features
 
-2. Start the app
+1. **Uber / Pathao Real Street Map Cockpit (`/(tabs)`)**
+   - **Native Street Map (`react-native-maps`)** with dynamic **Night Cockpit Dark** and **Daylight High-Contrast Light** custom map styles (plus a Web SVG/Tile fallback in `real-fleet-map.web.tsx`).
+   - **Real Street Coordinate Corridors** in **Dhaka Metro** (*Gulshan-2, Pragati Sarani, Hatirjheel Viaduct, Tejgaon Industrial Park, Mohakhali, Airport/Kuril, Motijheel*) and **San Francisco Bay Area**—switchable in 1 tap.
+   - **Real Device GPS (`expo-location`) + 60fps Live Route Simulation (`1x / 2x / 4x`)** with rotating directional vehicle markers, covered vs. remaining dashed route polylines, delivery waypoint pins, and active geofence zones.
+   - **Top Turn-by-Turn Navigation Banner** with maneuver direction, distance in meters, street/district name, and speed-limit warning badge.
+   - **Circular SVG Speedometer & Compass HUD** + **Spring-Gesture Driver Cockpit Bottom Sheet** (`Gesture.Pan()` + `withSpring`) with On-Duty toggle, OBD-II live diagnostics strip (`Ignition`, `14.1V`, `Fuel %`, `Coolant 88°C`, `0 DTC`), and 1-tap field log shortcuts.
 
-   ```bash
-   npx expo start
-   ```
+2. **End-to-End Driver Trip Lifecycle (`/(tabs)/trips` & `/modal/*`)**
+   - **Pre-Trip & Post-Trip 5-Point Walkaround Inspection Sheet** (`/modal/checklist`) with photo attachments (`expo-image-picker`).
+   - **Proof of Delivery (POD) Digital Finger Signature Pad** (`/modal/pod`) using interactive `react-native-svg` touch drawing + recipient name & photo capture.
+   - **Trip Bookings & Dispatch Approval Workflow** with automatic driver shift & leave conflict detection.
+   - **Historical Trip Replay Scrubber** to inspect completed trip coordinates and telemetry.
 
-In the output, you'll find options to open the app in a
+3. **Field Logs, Service Bay & Roadside SOS (`/(tabs)/logs`)**
+   - **Fuel Fill-Up Logger** (`/modal/quick-fuel`) with automatic full-to-full `km/L` calculation and **tank over-capacity / efficiency drop anomaly detection**.
+   - **Operating Expenses Logger** (`/modal/quick-expense`) for Tolls, Parking, Fines, and Driver Allowances.
+   - **Mechanic Service Bay Work Orders & Preventive Maintenance Rules** with spare parts & labor cost calculation and status transitions (`open → in_progress → waiting_parts → completed`).
+   - **Roadside SOS Incident Reporter** (`/modal/report-incident`) with auto-filled GPS coordinates and instant fleet alert broadcast.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+4. **Fleet Hub, Compliance Vault & CPK/TCO Analytics (`/(tabs)/fleet`)**
+   - **Vehicle Registry & Lifecycle Control** (`available`, `on_trip`, `under_maintenance`, `out_of_service`, `decommissioned`).
+   - **Compliance Document Vault** with `Expired / 7d / 15d / 30d` countdown alerts.
+   - **Driver Roster & Safety Leaderboard** (`0–100` score, grade badge, harsh braking, speeding, idle time, on-time rate).
+   - **Cost-per-Kilometer (CPK) & Total Cost of Ownership (TCO)** analytics.
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+5. **Light & Dark Theme Engine + 5-Role RBAC (`/(tabs)/profile`)**
+   - Instant toggle between **Night Cockpit Dark**, **Daylight Driving Light**, and **System Auto**, persisted in `AsyncStorage` (`tf-mobile-theme`).
+   - **1-Tap Quick Demo Role Switcher** across all 5 roles persisted in `AsyncStorage` (`tf-mobile-auth` & `tf-mobile-fleet`).
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## Pre-Seeded Demo Accounts (1-Tap Launch)
+
+| Role | Name | Email | Password |
+| :--- | :--- | :--- | :--- |
+| **Driver (Primary Mobile Persona)** | Marcus Vance | `driver@demo.com` | `demo1234` |
+| **Dispatcher** | Sarah Chen | `dispatch@demo.com` | `demo1234` |
+| **Fleet Manager** | Farhana Rahman | `manager@demo.com` | `demo1234` |
+| **Mechanic** | Kamrul Islam | `mechanic@demo.com` | `demo1234` |
+| **Super Admin** | Alex Morgan | `demo@demo.com` | `demo1234` |
+
+---
+
+## Getting Started
 
 ```bash
-npm run reset-project
+cd /Users/arif/Development/track-flow/mobile
+yarn install
+yarn start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+- Press **`i`** to open in iOS Simulator, **`a`** for Android Emulator, **`w`** for Web, or scan the QR code with **Expo Go**.
 
-### Other setup steps
+### Verification Commands
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+./node_modules/.bin/tsc --noEmit   # Strict TypeScript type check
+npx expo lint                      # Run Expo ESLint
+```

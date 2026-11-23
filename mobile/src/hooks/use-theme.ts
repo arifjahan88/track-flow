@@ -1,14 +1,39 @@
-/**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
- */
+import { useColorScheme } from "react-native";
+import { Colors, type TrackFlowPalette } from "@/constants/theme";
+import { useThemeStore } from "@/store/theme-store";
+import type { ResolvedTheme, ThemePreference } from "@/types";
 
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+export interface UseThemeResult extends TrackFlowPalette {
+  theme: TrackFlowPalette;
+  isDark: boolean;
+  resolvedMode: ResolvedTheme;
+  preference: ThemePreference;
+  setPreference: (pref: ThemePreference) => void;
+  toggleTheme: () => void;
+}
 
-export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? 'dark' : 'light';
+export function useTheme(): UseThemeResult {
+  const systemScheme = useColorScheme();
+  const preference = useThemeStore((s) => s.preference);
+  const setPreference = useThemeStore((s) => s.setPreference);
+  const storeToggle = useThemeStore((s) => s.toggleTheme);
 
-  return Colors[theme];
+  const resolvedMode: ResolvedTheme =
+    preference === "system"
+      ? systemScheme === "light"
+        ? "light"
+        : "dark"
+      : preference;
+
+  const palette = Colors[resolvedMode];
+
+  return {
+    ...palette,
+    theme: palette,
+    isDark: resolvedMode === "dark",
+    resolvedMode,
+    preference,
+    setPreference,
+    toggleTheme: () => storeToggle(resolvedMode),
+  };
 }
