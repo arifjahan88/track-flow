@@ -82,7 +82,7 @@ export function SpeedCompassHud({
           >
             <Ionicons
               name={followCamera ? "locate" : "locate-outline"}
-              size={18}
+              size={15}
               color={followCamera ? theme.primaryForeground : theme.text}
             />
           </Pressable>
@@ -99,7 +99,7 @@ export function SpeedCompassHud({
             accessibilityLabel="Fit entire route bounds"
             style={styles.dockBtn}
           >
-            <Ionicons name="scan-outline" size={17} color={theme.text} />
+            <Ionicons name="scan-outline" size={14} color={theme.text} />
           </Pressable>
 
           <View style={[styles.dockDivider, { backgroundColor: theme.border }]} />
@@ -114,7 +114,7 @@ export function SpeedCompassHud({
             accessibilityLabel="Open map options and simulation settings"
             style={styles.dockBtn}
           >
-            <Ionicons name="options-outline" size={17} color={theme.text} />
+            <Ionicons name="options-outline" size={14} color={theme.text} />
           </Pressable>
         </View>
       </View>
@@ -279,21 +279,21 @@ export function SpeedCompassHud({
 const styles = StyleSheet.create({
   dockContainer: {
     alignItems: "flex-end",
-    paddingHorizontal: 16,
-    marginBottom: 6,
+    paddingHorizontal: 10,
+    marginBottom: 4,
   },
   dockPill: {
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     borderWidth: 1,
     overflow: "hidden",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 6,
     elevation: 4,
   },
   dockBtn: {
-    width: 44,
-    height: 44,
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },

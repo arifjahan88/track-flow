@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { RoleSwitcherSheet } from "@/components/layout/role-switcher-sheet";
 import { PulseDot } from "@/components/ui/pulse-dot";
 import { ThemeToggleButton } from "@/components/ui/theme-toggle";
@@ -24,6 +24,8 @@ export function TopStatusHeader({
   floating = false,
 }: TopStatusHeaderProps) {
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
   const [roleSheetOpen, setRoleSheetOpen] = useState(false);
 
   const users = useAuthStore((s) => s.users);
@@ -88,6 +90,7 @@ export function TopStatusHeader({
               size={8}
             />
             <Text
+              numberOfLines={1}
               style={[
                 styles.onDutyText,
                 {
@@ -97,7 +100,7 @@ export function TopStatusHeader({
                 },
               ]}
             >
-              {driverOnDuty ? "ON DUTY · ONLINE" : "OFF DUTY"}
+              {driverOnDuty ? (isCompact ? "ONLINE" : "ON DUTY · ONLINE") : "OFF DUTY"}
             </Text>
           </Pressable>
         )}

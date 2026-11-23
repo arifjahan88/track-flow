@@ -6,10 +6,8 @@ import { DriverCockpitSheet } from "@/components/map/driver-cockpit-sheet";
 import { GeofenceAlertToast } from "@/components/map/geofence-alert-toast";
 import { RealFleetMap } from "@/components/map/real-fleet-map";
 import { SpeedCompassHud } from "@/components/map/speed-compass-hud";
-import { TurnByTurnBanner } from "@/components/map/turn-by-turn-banner";
 import { useLiveSimulation } from "@/hooks/use-live-simulation";
 import { useTheme } from "@/hooks/use-theme";
-import { getRouteById } from "@/lib/city-routes";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
@@ -79,7 +77,6 @@ export default function MapCockpitScreen() {
   );
 
   const selectedFrame = frames[effectiveSelectedId];
-  const selectedRoute = getRouteById(selectedVehicle?.routeId);
 
   const handleCycleSimSpeed = () => {
     const next =
@@ -115,24 +112,15 @@ export default function MapCockpitScreen() {
         fitTrigger={fitTrigger}
       />
 
-      {/* Top Overlay Stack: Navigation HUD when driving OR Clean Status Header when idle */}
+      {/* Top Overlay: Clean Compact Status Bar + Geofence Toast */}
       <View
         pointerEvents="box-none"
         style={[
           styles.topOverlay,
-          { paddingTop: Math.max(insets.top + 6, 14) },
+          { paddingTop: Math.max(insets.top + 4, 10) },
         ]}
       >
-        {selectedVehicle?.status === "on_trip" && selectedFrame ? (
-          <TurnByTurnBanner
-            instruction={selectedFrame.turnInstruction}
-            routeCode={selectedRoute.code}
-            routeColor={selectedRoute.color}
-            currentSpeedKmh={selectedFrame.speedKmh}
-          />
-        ) : (
-          <TopStatusHeader floating />
-        )}
+        <TopStatusHeader floating />
 
         <GeofenceAlertToast banner={activeBanner} onDismiss={dismissBanner} />
 

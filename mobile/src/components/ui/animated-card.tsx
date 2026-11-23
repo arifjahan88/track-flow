@@ -56,23 +56,26 @@ export function AnimatedCard({
 
   if (onPress) {
     return (
-      <AnimatedPressable
+      <Animated.View
         entering={FadeInDown.delay(delayMs).duration(150)}
         layout={LinearTransition.duration(150)}
-        onPressIn={() => {
-          scale.value = withTiming(0.98, { duration: 80 });
-        }}
-        onPressOut={() => {
-          scale.value = withTiming(1, { duration: 100 });
-        }}
-        onPress={() => {
-          triggerLightHaptic();
-          onPress();
-        }}
-        style={[containerStyle, scaleStyle]}
       >
-        {children}
-      </AnimatedPressable>
+        <AnimatedPressable
+          onPressIn={() => {
+            scale.value = withTiming(0.98, { duration: 80 });
+          }}
+          onPressOut={() => {
+            scale.value = withTiming(1, { duration: 100 });
+          }}
+          onPress={() => {
+            triggerLightHaptic();
+            onPress();
+          }}
+          style={[containerStyle, scaleStyle]}
+        >
+          {children}
+        </AnimatedPressable>
+      </Animated.View>
     );
   }
 

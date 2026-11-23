@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -19,6 +19,9 @@ interface OpeningSplashProps {
 export function OpeningSplash({ ready, onFinish }: OpeningSplashProps) {
   const theme = useTheme();
   const [mounted, setMounted] = useState(true);
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
+
   const opacity = useSharedValue(1);
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0.4);
@@ -44,20 +47,22 @@ export function OpeningSplash({ ready, onFinish }: OpeningSplashProps) {
   }, [pulseScale, pulseOpacity]);
 
   useEffect(() => {
-    if (ready) {
-      // Hold for at least a brief moment so the splash feels deliberate and smooth
-      const timer = setTimeout(() => {
-        opacity.value = withTiming(0, { duration: 250 }, (finished) => {
-          if (finished) {
-            onFinish?.();
-          }
-        });
-        setTimeout(() => setMounted(false), 300);
-      }, 700);
+    if (!ready) return;
 
-      return () => clearTimeout(timer);
-    }
-  }, [ready, opacity, onFinish]);
+    let unmountTimer: ReturnType<typeof setTimeout> | null = null;
+    const fadeTimer = setTimeout(() => {
+      opacity.value = withTiming(0, { duration: 250 });
+      unmountTimer = setTimeout(() => {
+        setMounted(false);
+        onFinishRef.current?.();
+      }, 280);
+    }, 700);
+
+    return () => {
+      clearTimeout(fadeTimer);
+      if (unmountTimer) clearTimeout(unmountTimer);
+    };
+  }, [ready, opacity]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, router } from "expo-router";
-import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Fonts } from "@/constants/theme";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuthStore } from "@/store/auth-store";
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const hydrated = useHydrated();
   const currentUserId = useAuthStore((s) => s.currentUserId);
   const users = useAuthStore((s) => s.users);
@@ -20,6 +22,7 @@ export default function TabsLayout() {
 
   const currentUser = users.find((u) => u.id === currentUserId);
   const role = currentUser?.role ?? "driver";
+  const bottomPad = Math.max(insets.bottom, 10);
 
   return (
     <Tabs
@@ -31,13 +34,13 @@ export default function TabsLayout() {
           backgroundColor: theme.card,
           borderTopColor: theme.border,
           borderTopWidth: 1,
-          height: Platform.OS === "ios" ? 84 : 64,
+          height: 56 + bottomPad,
           paddingTop: 6,
-          paddingBottom: Platform.OS === "ios" ? 24 : 8,
+          paddingBottom: bottomPad,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "700",
+          fontSize: 10,
+          fontFamily: Fonts.semibold,
         },
       }}
     >

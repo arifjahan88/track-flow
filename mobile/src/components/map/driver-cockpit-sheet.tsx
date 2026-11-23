@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -29,10 +30,20 @@ import type {
   Driver,
   LiveVehicleFrame,
   Trip,
+  TurnManeuver,
   UserRole,
   Vehicle,
   VehicleLifecycleStatus,
 } from "@/types";
+
+const MANEUVER_ICON: Record<TurnManeuver, keyof typeof Ionicons.glyphMap> = {
+  depart: "navigate",
+  right: "arrow-forward",
+  left: "arrow-back",
+  straight: "arrow-up",
+  merge: "git-merge-outline",
+  arrive: "flag",
+};
 
 interface DriverCockpitSheetProps {
   role: UserRole;
@@ -75,6 +86,8 @@ export function DriverCockpitSheet({
   onPauseOrResumeTrip,
 }: DriverCockpitSheetProps) {
   const theme = useTheme();
+  const { width, height } = useWindowDimensions();
+  const isCompact = width < 380;
   const [expanded, setExpanded] = useState(false);
   const dragOffset = useSharedValue(0);
 
@@ -130,20 +143,23 @@ export function DriverCockpitSheet({
     route.distanceKm * (1 - progressPct / 100)
   ).toFixed(1);
 
+  const turnInstruction = frame?.turnInstruction;
+
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View
-        layout={LinearTransition.duration(150)}
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: theme.card,
-            borderColor: theme.border,
-            shadowColor: theme.shadowColor,
-          },
-          animatedSheetStyle,
-        ]}
-      >
+    <Animated.View layout={LinearTransition.duration(150)}>
+      <GestureDetector gesture={panGesture}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              shadowColor: theme.shadowColor,
+              paddingHorizontal: isCompact ? 12 : 16,
+            },
+            animatedSheetStyle,
+          ]}
+        >
         {/* Drag Handle + Section Hint */}
         <Pressable
           onPress={() => toggleExpanded()}
@@ -180,92 +196,144 @@ export function DriverCockpitSheet({
           </View>
         </Pressable>
 
-        {/* Integrated Human-Designed Telemetry Strip */}
+        {/* Unified Navigation + Speed Telemetry Card (Merged Top & Bottom Details) */}
         <View
           style={[
-            styles.telemetryBar,
+            styles.telemetryCard,
             {
               backgroundColor: theme.muted,
               borderColor: theme.border,
             },
           ]}
         >
-          {/* Left: Prominent Speed Readout */}
-          <View style={styles.speedBlock}>
-            <Text
+          {/* Merged Next-Turn Row when Actively Navigating */}
+          {isMoving && turnInstruction ? (
+            <>
+              <View style={styles.turnRow}>
+                <View
+                  style={[
+                    styles.turnIconBox,
+                    { backgroundColor: theme.primary },
+                  ]}
+                >
+                  <Ionicons
+                    name={MANEUVER_ICON[turnInstruction.maneuver]}
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <Text style={[styles.turnDistText, { fontFamily: Fonts.mono }]}>
+                    {turnInstruction.distanceMeters}m
+                  </Text>
+                </View>
+
+                <View style={styles.turnInfoCol}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.turnStreetText,
+                      { color: theme.textSecondary, fontFamily: Fonts.medium },
+                    ]}
+                  >
+                    {turnInstruction.district} · {turnInstruction.streetName}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.turnInstructionText,
+                      { color: theme.text, fontFamily: Fonts.bold },
+                    ]}
+                  >
+                    {turnInstruction.instruction}
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={[styles.telemetryDivider, { backgroundColor: theme.border }]}
+              />
+            </>
+          ) : null}
+
+          {/* Telemetry Metrics Row: Speed | Speed Limit | Remaining */}
+          <View style={styles.telemetryBar}>
+            {/* Left: Prominent Speed Readout */}
+            <View style={styles.speedBlock}>
+              <Text
+                style={[
+                  styles.speedNumber,
+                  {
+                    fontSize: isCompact ? 22 : 25,
+                    color: isSpeeding ? theme.danger : theme.text,
+                    fontFamily: Fonts?.mono,
+                  },
+                ]}
+              >
+                {roundedSpeed}
+              </Text>
+              <View style={styles.speedSubCol}>
+                <Text style={[styles.speedUnit, { color: theme.textSecondary }]}>
+                  KM/H
+                </Text>
+                <Text
+                  style={[
+                    styles.headingText,
+                    { color: theme.textSecondary, fontFamily: Fonts?.mono },
+                  ]}
+                >
+                  {Math.round(headingDeg)}° {headingToCardinal(headingDeg)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Center: Single Clean Speed Limit Badge */}
+            <View
               style={[
-                styles.speedNumber,
+                styles.speedLimitBadge,
                 {
-                  color: isSpeeding ? theme.danger : theme.text,
-                  fontFamily: Fonts?.mono,
+                  borderColor: isSpeeding ? theme.danger : theme.border,
+                  backgroundColor: isSpeeding
+                    ? theme.isDark
+                      ? "rgba(239, 68, 68, 0.2)"
+                      : "rgba(220, 38, 38, 0.12)"
+                    : theme.cardElevated,
                 },
               ]}
             >
-              {roundedSpeed}
-            </Text>
-            <View style={styles.speedSubCol}>
-              <Text style={[styles.speedUnit, { color: theme.textSecondary }]}>
-                KM/H
+              <Text
+                style={[
+                  styles.speedLimitLabel,
+                  { color: isSpeeding ? theme.danger : theme.textSecondary },
+                ]}
+              >
+                LIMIT
               </Text>
               <Text
                 style={[
-                  styles.headingText,
-                  { color: theme.textSecondary, fontFamily: Fonts?.mono },
+                  styles.speedLimitNum,
+                  {
+                    color: isSpeeding ? theme.danger : theme.text,
+                    fontFamily: Fonts?.mono,
+                  },
                 ]}
               >
-                {Math.round(headingDeg)}° {headingToCardinal(headingDeg)}
+                {speedLimitKmh}
               </Text>
             </View>
-          </View>
 
-          {/* Center: Clean Speed Limit Badge */}
-          <View
-            style={[
-              styles.speedLimitBadge,
-              {
-                borderColor: isSpeeding ? theme.danger : theme.border,
-                backgroundColor: isSpeeding
-                  ? theme.isDark
-                    ? "rgba(239, 68, 68, 0.2)"
-                    : "rgba(220, 38, 38, 0.12)"
-                  : theme.cardElevated,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.speedLimitLabel,
-                { color: isSpeeding ? theme.danger : theme.textSecondary },
-              ]}
-            >
-              LIMIT
-            </Text>
-            <Text
-              style={[
-                styles.speedLimitNum,
-                {
-                  color: isSpeeding ? theme.danger : theme.text,
-                  fontFamily: Fonts?.mono,
-                },
-              ]}
-            >
-              {speedLimitKmh}
-            </Text>
-          </View>
-
-          {/* Right: Trip ETA or Standby Status */}
-          <View style={styles.etaBlock}>
-            <Text style={[styles.etaLabel, { color: theme.textSecondary }]}>
-              {isMoving ? "REMAINING" : "STATUS"}
-            </Text>
-            <Text
-              style={[
-                styles.etaValue,
-                { color: theme.text, fontFamily: Fonts?.mono },
-              ]}
-            >
-              {isMoving ? `${remainingMinutes}m · ${remainingKm}km` : "Standby"}
-            </Text>
+            {/* Right: Trip ETA or Standby Status */}
+            <View style={styles.etaBlock}>
+              <Text style={[styles.etaLabel, { color: theme.textSecondary }]}>
+                {isMoving ? "REMAINING" : "STATUS"}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.etaValue,
+                  { color: theme.text, fontFamily: Fonts?.mono },
+                ]}
+              >
+                {isMoving ? `${remainingMinutes}m · ${remainingKm}km` : "Standby"}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -369,27 +437,27 @@ export function DriverCockpitSheet({
               <Button
                 label={activeTrip?.status === "paused" ? "Resume" : "Pause"}
                 variant="secondary"
-                size="md"
+                size={isCompact ? "sm" : "md"}
                 icon={
                   <Ionicons
                     name={activeTrip?.status === "paused" ? "play" : "pause"}
-                    size={16}
+                    size={15}
                     color={theme.text}
                   />
                 }
                 onPress={onPauseOrResumeTrip}
-                style={styles.flexBtn}
+                style={[styles.flexBtn, styles.compactBtn]}
               />
 
               {pendingWaypoint ? (
                 <Button
                   label="POD Stop"
                   variant="primary"
-                  size="md"
+                  size={isCompact ? "sm" : "md"}
                   icon={
                     <Ionicons
                       name="create-outline"
-                      size={16}
+                      size={15}
                       color={theme.primaryForeground}
                     />
                   }
@@ -398,21 +466,21 @@ export function DriverCockpitSheet({
                       `/modal/pod?waypointId=${pendingWaypoint.id}&tripId=${activeTrip?.id ?? ""}`
                     )
                   }
-                  style={styles.flexBtn}
+                  style={[styles.flexBtn, styles.compactBtn]}
                 />
               ) : null}
 
               <Button
                 label="End Trip"
                 variant="danger"
-                size="md"
-                icon={<Ionicons name="stop-circle" size={16} color="#FFFFFF" />}
+                size={isCompact ? "sm" : "md"}
+                icon={<Ionicons name="stop-circle" size={15} color="#FFFFFF" />}
                 onPress={() =>
                   router.push(
                     `/modal/checklist?phase=post&vehicleId=${selectedVehicle.id}`
                   )
                 }
-                style={styles.flexBtn}
+                style={[styles.flexBtn, styles.compactBtn]}
               />
             </>
           ) : isLocked ? (
@@ -448,7 +516,12 @@ export function DriverCockpitSheet({
 
         {/* Expanded Secondary Telemetry, Quick Actions & Unit Switcher */}
         {expanded ? (
-          <View style={styles.expandedContent}>
+          <ScrollView
+            style={{ maxHeight: Math.min(250, height * 0.32) }}
+            contentContainerStyle={styles.expandedContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
             <ObdStrip
               ignitionOn={isMoving}
               fuelLevelPercent={selectedVehicle.fuelLevelPercent}
@@ -598,15 +671,19 @@ export function DriverCockpitSheet({
                 })}
               </ScrollView>
             </View>
-          </View>
+          </ScrollView>
         ) : null}
-      </Animated.View>
-    </GestureDetector>
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   sheet: {
+    width: "100%",
+    maxWidth: 600,
+    alignSelf: "center",
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     borderTopWidth: 1,
@@ -614,8 +691,8 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 14,
-    gap: 10,
+    paddingBottom: 12,
+    gap: 8,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -655,14 +732,55 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
+  telemetryCard: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  turnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  turnIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+  },
+  turnDistText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  turnInfoCol: {
+    flex: 1,
+    gap: 1,
+  },
+  turnStreetText: {
+    fontSize: 10,
+  },
+  turnInstructionText: {
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  telemetryDivider: {
+    height: 1,
+    width: "100%",
+  },
   telemetryBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: Radius.md,
-    borderWidth: 1,
+    paddingVertical: 7,
+  },
+  compactBtn: {
+    paddingHorizontal: 8,
   },
   speedBlock: {
     flexDirection: "row",
