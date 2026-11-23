@@ -10,6 +10,8 @@ import {
 import { computeFuelEfficiency, getAverageEfficiency } from "@/lib/fuel";
 import { getMaintenanceStatus } from "@/lib/maintenance";
 import { getLicenseStatus } from "@/lib/drivers";
+import { formatShortDate, parseIsoDate, toIsoDate } from "@/lib/format";
+import { paginateItems } from "@/components/table-pagination";
 import type { FuelLog, MaintenanceRecord } from "@/types";
 
 describe("geo utilities", () => {
@@ -164,5 +166,36 @@ describe("maintenance and driver status helpers", () => {
     expect(getLicenseStatus("2026-05-20", now)).toBe("expired");
     expect(getLicenseStatus("2026-06-20", now)).toBe("expiring_soon");
     expect(getLicenseStatus("2026-10-01", now)).toBe("valid");
+  });
+});
+
+describe("dayjs date formatting & table pagination helpers", () => {
+  it("formats and parses ISO dates cleanly with dayjs", () => {
+    expect(formatShortDate("2026-11-23")).toBe("Nov 23, 2026");
+    const parsed = parseIsoDate("2026-11-23");
+    expect(parsed).toBeInstanceOf(Date);
+    expect(toIsoDate(parsed)).toBe("2026-11-23");
+    expect(parseIsoDate("")).toBeUndefined();
+  });
+
+  it("paginates items and clamps out-of-range page numbers", () => {
+    const data = Array.from({ length: 23 }, (_, i) => i + 1);
+    const first = paginateItems(data, 1, 10);
+    expect(first.pageItems).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(first.totalPages).toBe(3);
+    expect(first.startIndex).toBe(1);
+    expect(first.endIndex).toBe(10);
+
+    const clamped = paginateItems(data, 99, 10);
+    expect(clamped.page).toBe(3);
+    expect(clamped.pageItems).toEqual([21, 22, 23]);
+    expect(clamped.startIndex).toBe(21);
+    expect(clamped.endIndex).toBe(23);
+
+    const empty = paginateItems([], 1, 10);
+    expect(empty.page).toBe(1);
+    expect(empty.totalPages).toBe(1);
+    expect(empty.startIndex).toBe(0);
+    expect(empty.endIndex).toBe(0);
   });
 });

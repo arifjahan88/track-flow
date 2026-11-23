@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
 import { Sparkline } from "@/components/sparkline";
 import {
   VehicleForm,
@@ -219,7 +220,7 @@ export default function VehiclesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerGrid className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredVehicles.map((vehicle) => {
             const inTrip = activeTripVehicleId === vehicle.id;
             const imgSrc = VEHICLE_IMAGES[vehicle.type];
@@ -238,10 +239,8 @@ export default function VehiclesPage() {
               );
 
             return (
-              <Card
-                key={vehicle.id}
-                className="flex flex-col overflow-hidden rounded-2xl border-border bg-card"
-              >
+              <StaggerItem key={vehicle.id} hoverLift>
+                <Card className="flex h-full flex-col overflow-hidden rounded-2xl border-border bg-card">
                 <div className="relative h-36 w-full overflow-hidden border-b border-border bg-[#12202f]">
                   {imgSrc ? (
                     <Image
@@ -365,10 +364,11 @@ export default function VehiclesPage() {
                     )}
                   </div>
                 </CardFooter>
-              </Card>
+                </Card>
+              </StaggerItem>
             );
           })}
-        </div>
+        </StaggerGrid>
       )}
 
       {/* Add vehicle dialog */}

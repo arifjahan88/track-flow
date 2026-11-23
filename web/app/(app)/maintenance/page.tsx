@@ -6,10 +6,14 @@ import {
   CheckCircle2,
   Pencil,
   Plus,
+  RotateCcw,
+  Search,
   Trash2,
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
+import { TablePagination, usePagination } from "@/components/table-pagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +33,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +61,12 @@ import {
 } from "@/components/ui/table";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
-import { formatCurrency, formatShortDate } from "@/lib/format";
+import {
+  formatCurrency,
+  formatShortDate,
+  offsetIsoDate,
+  toIsoDate,
+} from "@/lib/format";
 import {
   getMaintenanceStatus,
   type MaintenanceStatus,
@@ -72,6 +82,18 @@ const MAINTENANCE_TYPES: readonly MaintenanceType[] = [
   "Inspection",
 ];
 
+const ALL_VEHICLES = "__all__";
+const ALL_TYPES = "__all_types__";
+
+const MAINTENANCE_TYPE_ITEMS: Record<string, string> = Object.fromEntries(
+  MAINTENANCE_TYPES.map((t) => [t, t])
+);
+
+const MAINTENANCE_TYPE_FILTER_ITEMS: Record<string, string> = {
+  [ALL_TYPES]: "All service types",
+  ...MAINTENANCE_TYPE_ITEMS,
+};
+
 type StatusFilter = "all" | MaintenanceStatus;
 
 interface MaintenanceFormState {
@@ -81,10 +103,6 @@ interface MaintenanceFormState {
   scheduledDate: string;
   dueOdometerKm: string;
   cost: string;
-}
-
-function addDaysIso(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 export default function MaintenancePage() {
@@ -103,6 +121,9 @@ export default function MaintenancePage() {
   );
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [vehicleFilter, setVehicleFilter] = useState(ALL_VEHICLES);
+  const [typeFilter, setTypeFilter] = useState(ALL_TYPES);
+  const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MaintenanceRecord | null>(
     null
@@ -111,9 +132,7 @@ export default function MaintenancePage() {
     useState<MaintenanceRecord | null>(null);
   const [completingRecord, setCompletingRecord] =
     useState<MaintenanceRecord | null>(null);
-  const [completeDate, setCompleteDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [completeDate, setCompleteDate] = useState(() => toIsoDate());
   const [completeCost, setCompleteCost] = useState("");
   const [scheduleNextPrompt, setScheduleNextPrompt] =
     useState<MaintenanceRecord | null>(null);
@@ -122,7 +141,7 @@ export default function MaintenancePage() {
     vehicleId: vehicles[0]?.id ?? "",
     title: "",
     type: "Oil change",
-    scheduledDate: addDaysIso(30),
+    scheduledDate: offsetIsoDate(30),
     dueOdometerKm: "",
     cost: "",
   });
@@ -132,6 +151,22 @@ export default function MaintenancePage() {
     () => new Map(vehicles.map((v) => [v.id, v])),
     [vehicles]
   );
+
+  const vehicleFilterItems = useMemo(() => {
+    const items: Record<string, string> = { [ALL_VEHICLES]: "All vehicles" };
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
+  const vehicleSelectItems = useMemo(() => {
+    const items: Record<string, string> = {};
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
 
   const enriched = useMemo(() => {
     const order: Record<MaintenanceStatus, number> = {
@@ -150,13 +185,42 @@ export default function MaintenancePage() {
       .sort((a, b) => order[a.status] - order[b.status]);
   }, [records, vehiclesById]);
 
-  const filtered = useMemo(
-    () =>
-      statusFilter === "all"
-        ? enriched
-        : enriched.filter((item) => item.status === statusFilter),
-    [enriched, statusFilter]
-  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return enriched.filter((item) => {
+      if (statusFilter !== "all" && item.status !== statusFilter) return false;
+      if (
+        vehicleFilter !== ALL_VEHICLES &&
+        item.rec.vehicleId !== vehicleFilter
+      ) {
+        return false;
+      }
+      if (typeFilter !== ALL_TYPES && item.rec.type !== typeFilter) {
+        return false;
+      }
+      if (q) {
+        const hay = `${item.rec.title} ${item.rec.type} ${item.vehicle?.name ?? ""} ${item.vehicle?.plate ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [enriched, statusFilter, vehicleFilter, typeFilter, search]);
+
+  const pagination = usePagination(filtered, 10);
+
+  const hasActiveFilters =
+    statusFilter !== "all" ||
+    vehicleFilter !== ALL_VEHICLES ||
+    typeFilter !== ALL_TYPES ||
+    search.trim() !== "";
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setVehicleFilter(ALL_VEHICLES);
+    setTypeFilter(ALL_TYPES);
+    setSearch("");
+    pagination.setPage(1);
+  };
 
   if (!hydrated) {
     return (
@@ -179,7 +243,7 @@ export default function MaintenancePage() {
       vehicleId: prefill?.vehicleId ?? defaultVeh?.id ?? "",
       title: prefill?.title ?? "",
       type: prefill?.type ?? "Oil change",
-      scheduledDate: prefill?.scheduledDate ?? addDaysIso(30),
+      scheduledDate: prefill?.scheduledDate ?? offsetIsoDate(30),
       dueOdometerKm: prefill?.dueOdometerKm ?? "",
       cost: prefill?.cost ?? "",
     });
@@ -269,7 +333,7 @@ export default function MaintenancePage() {
       vehicleId: rec.vehicleId,
       title: rec.title,
       type: rec.type,
-      scheduledDate: addDaysIso(90),
+      scheduledDate: offsetIsoDate(90),
       dueOdometerKm: String(nextOdo),
       cost: rec.cost !== undefined ? String(rec.cost) : "",
     });
@@ -307,32 +371,38 @@ export default function MaintenancePage() {
       </div>
 
       {/* Status KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Overdue</CardDescription>
-            <CardTitle className="font-display text-2xl text-destructive">
-              {overdueCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Due soon (14d / 500 km)</CardDescription>
-            <CardTitle className="font-display text-2xl text-[var(--brand-amber)]">
-              {dueSoonCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Completed</CardDescription>
-            <CardTitle className="font-display text-2xl text-[var(--brand-teal)]">
-              {completedCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <StaggerGrid className="grid gap-4 sm:grid-cols-3">
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Overdue</CardDescription>
+              <CardTitle className="font-display text-2xl text-destructive">
+                {overdueCount}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Due soon (14d / 500 km)</CardDescription>
+              <CardTitle className="font-display text-2xl text-[var(--brand-amber)]">
+                {dueSoonCount}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Completed</CardDescription>
+              <CardTitle className="font-display text-2xl text-[var(--brand-teal)]">
+                {completedCount}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+      </StaggerGrid>
 
       {/* Filter pills */}
       <div className="flex flex-wrap gap-2">
@@ -350,7 +420,10 @@ export default function MaintenancePage() {
             type="button"
             size="sm"
             variant={statusFilter === val ? "default" : "outline"}
-            onClick={() => setStatusFilter(val)}
+            onClick={() => {
+              setStatusFilter(val);
+              pagination.setPage(1);
+            }}
             className="rounded-xl"
           >
             {label}
@@ -360,8 +433,89 @@ export default function MaintenancePage() {
 
       {/* Records table */}
       <Card className="rounded-2xl">
-        <CardHeader>
+        <CardHeader className="space-y-4">
           <CardTitle className="text-lg">Service records</CardTitle>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="relative lg:col-span-5">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                aria-label="Search maintenance records"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  pagination.setPage(1);
+                }}
+                placeholder="Search service, type, vehicle, or plate..."
+                className="pl-10"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <Select
+                value={vehicleFilter}
+                items={vehicleFilterItems}
+                onValueChange={(value) => {
+                  if (value) {
+                    setVehicleFilter(value);
+                    pagination.setPage(1);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter by vehicle" className="w-full">
+                  <SelectValue placeholder="All vehicles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VEHICLES}>All vehicles</SelectItem>
+                  {vehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name} ({v.plate})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="lg:col-span-3">
+              <Select
+                value={typeFilter}
+                items={MAINTENANCE_TYPE_FILTER_ITEMS}
+                onValueChange={(value) => {
+                  if (value) {
+                    setTypeFilter(value);
+                    pagination.setPage(1);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter by service type" className="w-full">
+                  <SelectValue placeholder="All service types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TYPES}>All service types</SelectItem>
+                  {MAINTENANCE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center lg:col-span-1">
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearFilters}
+                  aria-label="Reset maintenance filters"
+                  className="h-10 w-full rounded-xl px-2.5"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (
@@ -371,130 +525,153 @@ export default function MaintenancePage() {
                 No maintenance records found
               </p>
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Schedule an upcoming oil change, tire rotation, or inspection to
-                receive timely alerts.
+                {hasActiveFilters
+                  ? "Try adjusting or clearing your search, vehicle, or type filters."
+                  : "Schedule an upcoming oil change, tire rotation, or inspection to receive timely alerts."}
               </p>
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="mt-4 rounded-xl"
+                >
+                  Clear filters
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Schedule / Odometer</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map(({ rec, vehicle, status }) => (
-                    <TableRow key={rec.id}>
-                      <TableCell>
-                        <p className="font-medium text-foreground">
-                          {rec.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {rec.type}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        {vehicle?.name ?? "Unknown"}
-                        {vehicle ? (
-                          <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                            {vehicle.plate}
-                          </span>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            status === "overdue" ? "destructive" : "secondary"
-                          }
-                          className={
-                            status === "due_soon"
-                              ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
-                              : status === "completed"
-                                ? "border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]"
-                                : ""
-                          }
-                        >
-                          {status === "due_soon"
-                            ? "Due soon"
-                            : status.charAt(0).toUpperCase() + status.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {rec.completedDate ? (
-                          <span>
-                            Completed {formatShortDate(rec.completedDate)}
-                          </span>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {rec.scheduledDate ? (
-                              <p>Date: {formatShortDate(rec.scheduledDate)}</p>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Schedule / Odometer</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagination.pageItems.map(({ rec, vehicle, status }) => (
+                      <TableRow key={rec.id}>
+                        <TableCell>
+                          <p className="font-medium text-foreground">
+                            {rec.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {rec.type}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          {vehicle?.name ?? "Unknown"}
+                          {vehicle ? (
+                            <span className="ml-1.5 font-mono text-xs text-muted-foreground">
+                              {vehicle.plate}
+                            </span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              status === "overdue" ? "destructive" : "secondary"
+                            }
+                            className={
+                              status === "due_soon"
+                                ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
+                                : status === "completed"
+                                  ? "border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]"
+                                  : ""
+                            }
+                          >
+                            {status === "due_soon"
+                              ? "Due soon"
+                              : status.charAt(0).toUpperCase() + status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {rec.completedDate ? (
+                            <span>
+                              Completed {formatShortDate(rec.completedDate)}
+                            </span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {rec.scheduledDate ? (
+                                <p>Date: {formatShortDate(rec.scheduledDate)}</p>
+                              ) : null}
+                              {rec.dueOdometerKm !== undefined ? (
+                                <p>
+                                  Odo:{" "}
+                                  {rec.dueOdometerKm.toLocaleString("en-US")} km
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {rec.cost !== undefined ? formatCurrency(rec.cost) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex items-center gap-1">
+                            {!rec.completedDate ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setCompletingRecord(rec);
+                                  setCompleteDate(toIsoDate());
+                                  setCompleteCost(
+                                    rec.cost !== undefined ? String(rec.cost) : ""
+                                  );
+                                }}
+                                className="h-7 rounded-lg px-2 text-xs"
+                              >
+                                <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-[var(--brand-teal)]" />
+                                Complete
+                              </Button>
                             ) : null}
-                            {rec.dueOdometerKm !== undefined ? (
-                              <p>
-                                Odo:{" "}
-                                {rec.dueOdometerKm.toLocaleString("en-US")} km
-                              </p>
-                            ) : null}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {rec.cost !== undefined ? formatCurrency(rec.cost) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="inline-flex items-center gap-1">
-                          {!rec.completedDate ? (
                             <Button
                               type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setCompletingRecord(rec);
-                                setCompleteDate(
-                                  new Date().toISOString().slice(0, 10)
-                                );
-                                setCompleteCost(
-                                  rec.cost !== undefined ? String(rec.cost) : ""
-                                );
-                              }}
-                              className="h-7 rounded-lg px-2 text-xs"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Edit service record"
+                              onClick={() => openEditDialog(rec)}
                             >
-                              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-[var(--brand-teal)]" />
-                              Complete
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="Edit service record"
-                            onClick={() => openEditDialog(rec)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="Delete service record"
-                            onClick={() => setDeletingRecord(rec)}
-                            className="text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Delete service record"
+                              onClick={() => setDeletingRecord(rec)}
+                              className="text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <TablePagination
+                page={pagination.page}
+                pageSize={pagination.pageSize}
+                totalItems={pagination.totalItems}
+                totalPages={pagination.totalPages}
+                startIndex={pagination.startIndex}
+                endIndex={pagination.endIndex}
+                onPageChange={pagination.setPage}
+                onPageSizeChange={pagination.setPageSize}
+                itemLabel="records"
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -516,14 +693,12 @@ export default function MaintenancePage() {
               <Label htmlFor="maint-vehicle">Vehicle</Label>
               <Select
                 value={form.vehicleId}
+                items={vehicleSelectItems}
                 onValueChange={(value) => {
                   if (value) setForm((prev) => ({ ...prev, vehicleId: value }));
                 }}
               >
-                <SelectTrigger
-                  id="maint-vehicle"
-                  className="h-10 w-full rounded-xl"
-                >
+                <SelectTrigger id="maint-vehicle" className="w-full">
                   <SelectValue placeholder="Select vehicle" />
                 </SelectTrigger>
                 <SelectContent>
@@ -546,7 +721,6 @@ export default function MaintenancePage() {
                   setForm((prev) => ({ ...prev, title: e.target.value }))
                 }
                 placeholder="Engine oil and filter change"
-                className="h-10 rounded-xl"
               />
             </div>
 
@@ -555,6 +729,7 @@ export default function MaintenancePage() {
                 <Label htmlFor="maint-type">Type</Label>
                 <Select
                   value={form.type}
+                  items={MAINTENANCE_TYPE_ITEMS}
                   onValueChange={(value) => {
                     if (value)
                       setForm((prev) => ({
@@ -563,10 +738,7 @@ export default function MaintenancePage() {
                       }));
                   }}
                 >
-                  <SelectTrigger
-                    id="maint-type"
-                    className="h-10 w-full rounded-xl"
-                  >
+                  <SelectTrigger id="maint-type" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -591,7 +763,6 @@ export default function MaintenancePage() {
                     setForm((prev) => ({ ...prev, cost: e.target.value }))
                   }
                   placeholder="85.00"
-                  className="h-10 rounded-xl"
                 />
               </div>
             </div>
@@ -599,17 +770,17 @@ export default function MaintenancePage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="maint-date">Scheduled date</Label>
-                <Input
+                <DatePicker
                   id="maint-date"
-                  type="date"
                   value={form.scheduledDate}
-                  onChange={(e) =>
+                  clearable
+                  onChange={(scheduledDate) =>
                     setForm((prev) => ({
                       ...prev,
-                      scheduledDate: e.target.value,
+                      scheduledDate,
                     }))
                   }
-                  className="h-10 rounded-xl"
+                  placeholder="Select date"
                 />
               </div>
 
@@ -627,7 +798,6 @@ export default function MaintenancePage() {
                     }))
                   }
                   placeholder="50000"
-                  className="h-10 rounded-xl"
                 />
               </div>
             </div>
@@ -678,13 +848,11 @@ export default function MaintenancePage() {
           <form onSubmit={handleCompleteSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="complete-date">Completed date</Label>
-              <Input
+              <DatePicker
                 id="complete-date"
-                type="date"
-                required
                 value={completeDate}
-                onChange={(e) => setCompleteDate(e.target.value)}
-                className="h-10 rounded-xl"
+                onChange={setCompleteDate}
+                placeholder="Select completion date"
               />
             </div>
             <div className="space-y-2">

@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Pencil, Phone, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { computeDriverStats, getLicenseStatus } from "@/lib/drivers";
-import { formatKm, formatShortDate } from "@/lib/format";
+import { formatKm, formatShortDate, offsetIsoDate } from "@/lib/format";
 import type { Driver } from "@/types";
 
 const UNASSIGNED_VALUE = "__unassigned__";
@@ -82,6 +84,14 @@ export default function DriversPage() {
     [vehicles]
   );
 
+  const vehicleSelectItems = useMemo(() => {
+    const items: Record<string, string> = { [UNASSIGNED_VALUE]: "Unassigned" };
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
   if (!hydrated) {
     return (
       <div className="space-y-6">
@@ -102,9 +112,7 @@ export default function DriversPage() {
       name: "",
       phone: "",
       licenseNumber: "",
-      licenseExpiry: new Date(Date.now() + 180 * 86_400_000)
-        .toISOString()
-        .slice(0, 10),
+      licenseExpiry: offsetIsoDate(180),
       assignedVehicleId: UNASSIGNED_VALUE,
     });
     setDialogOpen(true);
@@ -215,7 +223,7 @@ export default function DriversPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerGrid className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {drivers.map((driver) => {
             const licenseStatus = getLicenseStatus(driver.licenseExpiry);
             const assignedVehicle = driver.assignedVehicleId
@@ -224,7 +232,8 @@ export default function DriversPage() {
             const stats = computeDriverStats(driver.id, trips);
 
             return (
-              <Card key={driver.id} className="flex flex-col rounded-2xl">
+              <StaggerItem key={driver.id} hoverLift>
+                <Card className="flex h-full flex-col rounded-2xl">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -329,10 +338,11 @@ export default function DriversPage() {
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </CardFooter>
-              </Card>
+                </Card>
+              </StaggerItem>
             );
           })}
-        </div>
+        </StaggerGrid>
       )}
 
       {/* Add / Edit Driver Dialog */}
@@ -396,18 +406,16 @@ export default function DriversPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="driver-expiry">License expiry</Label>
-                <Input
+                <DatePicker
                   id="driver-expiry"
-                  type="date"
-                  required
                   value={form.licenseExpiry}
-                  onChange={(e) =>
+                  onChange={(licenseExpiry) =>
                     setForm((prev) => ({
                       ...prev,
-                      licenseExpiry: e.target.value,
+                      licenseExpiry,
                     }))
                   }
-                  className="h-10 rounded-xl"
+                  placeholder="Select expiry date"
                 />
               </div>
             </div>
@@ -418,15 +426,13 @@ export default function DriversPage() {
               </Label>
               <Select
                 value={form.assignedVehicleId}
+                items={vehicleSelectItems}
                 onValueChange={(value) => {
                   if (value)
                     setForm((prev) => ({ ...prev, assignedVehicleId: value }));
                 }}
               >
-                <SelectTrigger
-                  id="driver-vehicle"
-                  className="h-10 w-full rounded-xl"
-                >
+                <SelectTrigger id="driver-vehicle" className="w-full">
                   <SelectValue placeholder="Unassigned" />
                 </SelectTrigger>
                 <SelectContent>

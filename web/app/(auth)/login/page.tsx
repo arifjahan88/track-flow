@@ -7,15 +7,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,9 +47,7 @@ export default function LoginPage() {
     await new Promise((resolve) => setTimeout(resolve, 260));
 
     const err =
-      tab === "signin"
-        ? await login(email, password)
-        : await register(name, email, password);
+      tab === "signin" ? await login(email, password) : await register(name, email, password);
 
     if (err) {
       setError(err);
@@ -93,7 +84,7 @@ export default function LoginPage() {
           className="pointer-events-none object-cover opacity-35"
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#0b1522]/85 via-[#0b1522]/65 to-[#12202f]/90"
+          className="pointer-events-none absolute inset-0 bg-linear-to-br from-[#0b1522]/85 via-[#0b1522]/65 to-[#12202f]/90"
           aria-hidden="true"
         />
 
@@ -116,12 +107,7 @@ export default function LoginPage() {
               <stop offset="65%" stopColor="#06b6d4" />
               <stop offset="100%" stopColor="#38bdf8" />
             </linearGradient>
-            <pattern
-              id="login-grid"
-              width="44"
-              height="44"
-              patternUnits="userSpaceOnUse"
-            >
+            <pattern id="login-grid" width="44" height="44" patternUnits="userSpaceOnUse">
               <path
                 d="M 44 0 L 0 0 0 44"
                 fill="none"
@@ -150,28 +136,15 @@ export default function LoginPage() {
             strokeLinecap="round"
             initial={prefersReduced ? { pathLength: 1 } : { pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={
-              prefersReduced
-                ? { duration: 0 }
-                : { duration: 4, ease: "easeInOut" }
-            }
+            transition={prefersReduced ? { duration: 0 } : { duration: 4, ease: "easeInOut" }}
           />
 
-          <circle
-            cx="70"
-            cy="340"
-            r="6"
-            fill="#0b1522"
-            stroke="#2ee6d6"
-            strokeWidth="3"
-          />
+          <circle cx="70" cy="340" r="6" fill="#0b1522" stroke="#2ee6d6" strokeWidth="3" />
 
           <motion.g
             initial={prefersReduced ? { opacity: 1 } : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={
-              prefersReduced ? { duration: 0 } : { delay: 3.6, duration: 0.4 }
-            }
+            transition={prefersReduced ? { duration: 0 } : { delay: 3.6, duration: 0.4 }}
           >
             <circle
               cx="548"
@@ -181,14 +154,7 @@ export default function LoginPage() {
               fillOpacity="0.28"
               className="tf-live-pulse origin-[548px_108px]"
             />
-            <circle
-              cx="548"
-              cy="108"
-              r="6.5"
-              fill="#ffb020"
-              stroke="#0b1522"
-              strokeWidth="2"
-            />
+            <circle cx="548" cy="108" r="6.5" fill="#ffb020" stroke="#0b1522" strokeWidth="2" />
           </motion.g>
         </svg>
 
@@ -201,8 +167,8 @@ export default function LoginPage() {
             See every trip as it happens.
           </h1>
           <p className="text-sm leading-relaxed text-[#b4c6d8] sm:text-base">
-            Track live GPS routes, monitor fleet vehicles, log fuel and
-            maintenance, and export trip reports directly from your browser.
+            Track live GPS routes, monitor fleet vehicles, log fuel and maintenance, and export trip
+            reports directly from your browser.
           </p>
         </div>
 
@@ -222,17 +188,6 @@ export default function LoginPage() {
         >
           <Card className="rounded-2xl border-border bg-card shadow-lg">
             <CardHeader className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <Badge
-                  variant="secondary"
-                  className="rounded-full border border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/12 text-[var(--brand-teal)]"
-                >
-                  Demo mode
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  Local browser session
-                </span>
-              </div>
               <div>
                 <CardTitle className="text-xl font-semibold">
                   {tab === "signin" ? "Sign in to TrackFlow" : "Create account"}
@@ -407,25 +362,6 @@ export default function LoginPage() {
                   </form>
                 </TabsContent>
               </Tabs>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">or</span>
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                disabled={submitting}
-                onClick={handleDemoLogin}
-                className="h-10 w-full rounded-xl"
-              >
-                Continue as demo admin
-              </Button>
             </CardContent>
           </Card>
         </motion.div>

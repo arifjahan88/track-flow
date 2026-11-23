@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { AnimatedNumber } from "@/components/animated-number";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -128,81 +129,89 @@ export default function DashboardPage() {
       ) : null}
 
       {/* 4 KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Vehicles
-            </CardTitle>
-            <Car className="h-4 w-4 text-[var(--brand-teal)]" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              <AnimatedNumber value={vehicles.length} />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Registered in your fleet
-            </p>
-          </CardContent>
-        </Card>
+      <StaggerGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StaggerItem hoverLift>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Vehicles
+              </CardTitle>
+              <Car className="h-4 w-4 text-[var(--brand-teal)]" />
+            </CardHeader>
+            <CardContent>
+              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                <AnimatedNumber value={vehicles.length} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Registered in your fleet
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Completed trips
-            </CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-[var(--brand-blue)]" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              <AnimatedNumber value={completedTrips.length} />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Logged in browser history
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem hoverLift>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Completed trips
+              </CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-[var(--brand-blue)]" />
+            </CardHeader>
+            <CardContent>
+              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                <AnimatedNumber value={completedTrips.length} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Logged in browser history
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Distance driven
-            </CardTitle>
-            <Route className="h-4 w-4 text-[var(--brand-teal)]" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              <AnimatedNumber value={totalDistanceKm} decimals={1} suffix=" km" />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Across all completed trips
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem hoverLift>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Distance driven
+              </CardTitle>
+              <Route className="h-4 w-4 text-[var(--brand-teal)]" />
+            </CardHeader>
+            <CardContent>
+              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
+                <AnimatedNumber value={totalDistanceKm} decimals={1} suffix=" km" />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Across all completed trips
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Active trip status
-            </CardTitle>
-            <Navigation className="h-4 w-4 text-[var(--brand-amber)]" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-display text-2xl font-semibold tracking-tight text-foreground">
-              {activeTrip
-                ? activeTrip.status === "active"
-                  ? "Live"
-                  : "Paused"
-                : "Idle"}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {activeTrip
-                ? `${activeVehicle?.name ?? "Vehicle"} · ${formatKm(activeTrip.distanceKm)} km`
-                : "Ready to track next route"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <StaggerItem hoverLift>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Active trip status
+              </CardTitle>
+              <Navigation className="h-4 w-4 text-[var(--brand-amber)]" />
+            </CardHeader>
+            <CardContent>
+              <div className="font-display text-2xl font-semibold tracking-tight text-foreground">
+                {activeTrip
+                  ? activeTrip.status === "active"
+                    ? "Live"
+                    : "Paused"
+                  : "Idle"}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {activeTrip
+                  ? `${activeVehicle?.name ?? "Vehicle"} · ${formatKm(activeTrip.distanceKm)} km`
+                  : "Ready to track next route"}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+      </StaggerGrid>
 
       {/* Main grid: Recent trips + Maintenance alerts */}
       <div className="grid gap-6 lg:grid-cols-3">

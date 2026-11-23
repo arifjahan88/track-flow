@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3, Download, RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
+import { TablePagination, usePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +21,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -45,9 +48,11 @@ import {
   formatDuration,
   formatKm,
   formatSpeed,
+  toIsoDate,
 } from "@/lib/format";
 
 const ALL_VEHICLES = "__all__";
+const ALL_DRIVERS = "__all_drivers__";
 
 const chartConfig: ChartConfig = {
   distanceKm: {
@@ -56,12 +61,6 @@ const chartConfig: ChartConfig = {
   },
 };
 
-function offsetDateIso(daysOffset: number): string {
-  return new Date(Date.now() + daysOffset * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-}
-
 export default function ReportsPage() {
   const hydrated = useHydrated();
   const vehicles = useFleetStore((s) => s.vehicles);
@@ -69,6 +68,8 @@ export default function ReportsPage() {
   const trips = useFleetStore((s) => s.trips);
 
   const [vehicleFilter, setVehicleFilter] = useState(ALL_VEHICLES);
+  const [driverFilter, setDriverFilter] = useState(ALL_DRIVERS);
+  const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -81,18 +82,62 @@ export default function ReportsPage() {
     [drivers]
   );
 
+  const vehicleFilterItems = useMemo(() => {
+    const items: Record<string, string> = { [ALL_VEHICLES]: "All vehicles" };
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
+  const driverFilterItems = useMemo(() => {
+    const items: Record<string, string> = { [ALL_DRIVERS]: "All drivers" };
+    for (const d of drivers) {
+      items[d.id] = d.name;
+    }
+    return items;
+  }, [drivers]);
+
   const filteredTrips = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return trips.filter((trip) => {
       if (trip.status !== "done") return false;
       if (vehicleFilter !== ALL_VEHICLES && trip.vehicleId !== vehicleFilter) {
         return false;
       }
+      if (driverFilter !== ALL_DRIVERS && trip.driverId !== driverFilter) {
+        return false;
+      }
       const tripDay = trip.startedAt.slice(0, 10);
       if (fromDate && tripDay < fromDate) return false;
       if (toDate && tripDay > toDate) return false;
+      if (q) {
+        const vehicle = vehiclesById.get(trip.vehicleId);
+        const driver = trip.driverId ? driversById.get(trip.driverId) : undefined;
+        const hay = `${trip.purpose} ${vehicle?.name ?? ""} ${vehicle?.plate ?? ""} ${driver?.name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [trips, vehicleFilter, fromDate, toDate]);
+  }, [trips, vehicleFilter, driverFilter, fromDate, toDate, search, vehiclesById, driversById]);
+
+  const pagination = usePagination(filteredTrips, 10);
+
+  const hasActiveFilters =
+    vehicleFilter !== ALL_VEHICLES ||
+    driverFilter !== ALL_DRIVERS ||
+    search.trim() !== "" ||
+    fromDate !== "" ||
+    toDate !== "";
+
+  const clearFilters = () => {
+    setVehicleFilter(ALL_VEHICLES);
+    setDriverFilter(ALL_DRIVERS);
+    setSearch("");
+    setFromDate("");
+    setToDate("");
+    pagination.setPage(1);
+  };
 
   const chartData = useMemo(() => {
     const byDay = new Map<string, number>();
@@ -137,23 +182,13 @@ export default function ReportsPage() {
     0
   );
 
-  const applyPreset = (days: number | null) => {
-    if (days === null) {
-      setFromDate("");
-      setToDate("");
-      return;
-    }
-    setFromDate(offsetDateIso(-days));
-    setToDate(offsetDateIso(0));
-  };
-
   const handleExportCsv = () => {
     if (filteredTrips.length === 0) {
       toast.error("No trips to export for the selected filters.");
       return;
     }
     const csv = tripsToCsv(filteredTrips, vehiclesById, driversById);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toIsoDate();
     downloadTextFile(`trackflow-trips-${today}.csv`, csv, "text/csv;charset=utf-8");
     toast.success(`Exported ${filteredTrips.length} trips to CSV.`);
   };
@@ -166,15 +201,15 @@ export default function ReportsPage() {
             Reports
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Filter completed trips by date range and vehicle, inspect daily
-            distance, and export CSV.
+            Filter completed trips by date range, vehicle, or driver, inspect
+            daily distance, and export CSV.
           </p>
         </div>
 
         <Button
           type="button"
           onClick={handleExportCsv}
-          className="rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
+          className="h-10 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
         >
           <Download className="mr-2 h-4 w-4" />
           Export CSV
@@ -183,19 +218,38 @@ export default function ReportsPage() {
 
       {/* Filters */}
       <Card className="rounded-2xl">
-        <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
+        <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-12">
+          <div className="space-y-2 lg:col-span-3">
+            <Label htmlFor="report-search">Search</Label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="report-search"
+                type="search"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  pagination.setPage(1);
+                }}
+                placeholder="Purpose, plate, driver..."
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 lg:col-span-3">
             <Label htmlFor="report-vehicle">Vehicle</Label>
             <Select
               value={vehicleFilter}
+              items={vehicleFilterItems}
               onValueChange={(value) => {
-                if (value) setVehicleFilter(value);
+                if (value) {
+                  setVehicleFilter(value);
+                  pagination.setPage(1);
+                }
               }}
             >
-              <SelectTrigger
-                id="report-vehicle"
-                className="h-10 w-full rounded-xl"
-              >
+              <SelectTrigger id="report-vehicle" className="w-full">
                 <SelectValue placeholder="All vehicles" />
               </SelectTrigger>
               <SelectContent>
@@ -209,100 +263,108 @@ export default function ReportsPage() {
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="report-from">From date</Label>
-            <Input
-              id="report-from"
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-10 rounded-xl"
+          <div className="space-y-2 lg:col-span-2">
+            <Label htmlFor="report-driver">Driver</Label>
+            <Select
+              value={driverFilter}
+              items={driverFilterItems}
+              onValueChange={(value) => {
+                if (value) {
+                  setDriverFilter(value);
+                  pagination.setPage(1);
+                }
+              }}
+            >
+              <SelectTrigger id="report-driver" className="w-full">
+                <SelectValue placeholder="All drivers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_DRIVERS}>All drivers</SelectItem>
+                {drivers.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2 lg:col-span-3">
+            <Label htmlFor="report-date-range">Date range</Label>
+            <DateRangePicker
+              id="report-date-range"
+              fromDate={fromDate}
+              toDate={toDate}
+              presets
+              align="end"
+              onChange={({ fromDate: nextFrom, toDate: nextTo }) => {
+                setFromDate(nextFrom);
+                setToDate(nextTo);
+                pagination.setPage(1);
+              }}
+              placeholder="All dates"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="report-to">To date</Label>
-            <Input
-              id="report-to"
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-10 rounded-xl"
-            />
-          </div>
-
-          <div className="flex flex-col justify-end gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Quick range
-            </span>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="flex items-end lg:col-span-1">
+            {hasActiveFilters ? (
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                onClick={() => applyPreset(7)}
-                className="rounded-lg"
+                onClick={clearFilters}
+                aria-label="Reset report filters"
+                className="h-10 w-full rounded-xl px-2.5"
               >
-                7d
+                <RotateCcw className="h-4 w-4" />
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => applyPreset(30)}
-                className="rounded-lg"
-              >
-                30d
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => applyPreset(null)}
-                className="rounded-lg"
-              >
-                All
-              </Button>
-            </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
 
       {/* Summary KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Total distance</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {formatKm(totalDistanceKm)} km
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Trips</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {filteredTrips.length}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Average speed</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {formatSpeed(averageSpeedKmh)} km/h
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Top speed</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {formatSpeed(topSpeedKmh)} km/h
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <StaggerGrid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Total distance</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {formatKm(totalDistanceKm)} km
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Trips</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {filteredTrips.length}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Average speed</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {formatSpeed(averageSpeedKmh)} km/h
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Top speed</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {formatSpeed(topSpeedKmh)} km/h
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </StaggerItem>
+      </StaggerGrid>
 
       {/* Distance-per-day chart */}
       <Card className="rounded-2xl">
@@ -364,61 +426,74 @@ export default function ReportsPage() {
               No completed trips match the selected filters.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Purpose</TableHead>
-                    <TableHead className="text-right">Distance</TableHead>
-                    <TableHead className="text-right">Duration</TableHead>
-                    <TableHead className="text-right">Top speed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTrips.map((trip) => {
-                    const vehicle = vehiclesById.get(trip.vehicleId);
-                    const driver = trip.driverId
-                      ? driversById.get(trip.driverId)
-                      : undefined;
-                    const durationMs = trip.endedAt
-                      ? Math.max(
-                          0,
-                          new Date(trip.endedAt).getTime() -
-                            new Date(trip.startedAt).getTime()
-                        )
-                      : 0;
-                    return (
-                      <TableRow key={trip.id}>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                          {formatDateTime(trip.startedAt)}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {vehicle?.name ?? "Unknown"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {driver?.name ?? "Unassigned"}
-                        </TableCell>
-                        <TableCell>{trip.purpose}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatKm(trip.distanceKm)} km
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatDuration(durationMs)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="secondary" className="rounded-lg">
-                            {formatSpeed(trip.maxSpeedKmh)} km/h
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Purpose</TableHead>
+                      <TableHead className="text-right">Distance</TableHead>
+                      <TableHead className="text-right">Duration</TableHead>
+                      <TableHead className="text-right">Top speed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagination.pageItems.map((trip) => {
+                      const vehicle = vehiclesById.get(trip.vehicleId);
+                      const driver = trip.driverId
+                        ? driversById.get(trip.driverId)
+                        : undefined;
+                      const durationMs = trip.endedAt
+                        ? Math.max(
+                            0,
+                            new Date(trip.endedAt).getTime() -
+                              new Date(trip.startedAt).getTime()
+                          )
+                        : 0;
+                      return (
+                        <TableRow key={trip.id}>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {formatDateTime(trip.startedAt)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {vehicle?.name ?? "Unknown"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {driver?.name ?? "Unassigned"}
+                          </TableCell>
+                          <TableCell>{trip.purpose}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatKm(trip.distanceKm)} km
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatDuration(durationMs)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="secondary" className="rounded-lg">
+                              {formatSpeed(trip.maxSpeedKmh)} km/h
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <TablePagination
+                page={pagination.page}
+                pageSize={pagination.pageSize}
+                totalItems={pagination.totalItems}
+                totalPages={pagination.totalPages}
+                startIndex={pagination.startIndex}
+                endIndex={pagination.endIndex}
+                onPageChange={pagination.setPage}
+                onPageSizeChange={pagination.setPageSize}
+                itemLabel="trips"
+              />
+            </>
           )}
         </CardContent>
       </Card>

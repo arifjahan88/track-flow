@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Fuel, Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
+import { Fuel, Pencil, Plus, RotateCcw, Search, Trash2, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import { StaggerGrid, StaggerItem } from "@/components/motion";
 import { Sparkline } from "@/components/sparkline";
+import { TablePagination, usePagination } from "@/components/table-pagination";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +25,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Dialog,
   DialogContent,
@@ -51,11 +55,23 @@ import {
 } from "@/components/ui/table";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
-import { formatCurrency, formatKm, formatShortDate } from "@/lib/format";
+import {
+  formatCurrency,
+  formatKm,
+  formatShortDate,
+  toIsoDate,
+} from "@/lib/format";
 import { computeFuelEfficiency, getAverageEfficiency } from "@/lib/fuel";
 import type { FuelLog } from "@/types";
 
 const ALL_VEHICLES = "__all__";
+const ALL_TANKS = "__all_tanks__";
+
+const TANK_FILTER_ITEMS: Record<string, string> = {
+  [ALL_TANKS]: "All tank types",
+  full: "Full tank",
+  partial: "Partial fill",
+};
 
 interface FuelFormState {
   vehicleId: string;
@@ -69,7 +85,7 @@ interface FuelFormState {
 function defaultFormState(vehicleId: string, odometerKm: number): FuelFormState {
   return {
     vehicleId,
-    date: new Date().toISOString().slice(0, 10),
+    date: toIsoDate(),
     liters: "40",
     pricePerLiter: "1.25",
     odometerKm: String(Math.round(odometerKm)),
@@ -86,6 +102,10 @@ export default function FuelPage() {
   const removeFuelLog = useFleetStore((s) => s.removeFuelLog);
 
   const [vehicleFilter, setVehicleFilter] = useState(ALL_VEHICLES);
+  const [tankFilter, setTankFilter] = useState(ALL_TANKS);
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<FuelLog | null>(null);
   const [deletingLog, setDeletingLog] = useState<FuelLog | null>(null);
@@ -99,15 +119,62 @@ export default function FuelPage() {
     [vehicles]
   );
 
+  const vehicleFilterItems = useMemo(() => {
+    const items: Record<string, string> = { [ALL_VEHICLES]: "All vehicles" };
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
+  const vehicleSelectItems = useMemo(() => {
+    const items: Record<string, string> = {};
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
   const filteredLogs = useMemo(() => {
-    const list =
-      vehicleFilter === ALL_VEHICLES
-        ? fuelLogs
-        : fuelLogs.filter((l) => l.vehicleId === vehicleFilter);
+    const q = search.trim().toLowerCase();
+    const list = fuelLogs.filter((l) => {
+      if (vehicleFilter !== ALL_VEHICLES && l.vehicleId !== vehicleFilter) {
+        return false;
+      }
+      if (tankFilter === "full" && !l.fullTank) return false;
+      if (tankFilter === "partial" && l.fullTank) return false;
+      const logDay = l.date.slice(0, 10);
+      if (fromDate && logDay < fromDate) return false;
+      if (toDate && logDay > toDate) return false;
+      if (q) {
+        const vehicle = vehiclesById.get(l.vehicleId);
+        const hay = `${vehicle?.name ?? ""} ${vehicle?.plate ?? ""} ${l.date}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
     return [...list].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-  }, [fuelLogs, vehicleFilter]);
+  }, [fuelLogs, vehicleFilter, tankFilter, fromDate, toDate, search, vehiclesById]);
+
+  const pagination = usePagination(filteredLogs, 10);
+
+  const hasActiveFilters =
+    vehicleFilter !== ALL_VEHICLES ||
+    tankFilter !== ALL_TANKS ||
+    search.trim() !== "" ||
+    fromDate !== "" ||
+    toDate !== "";
+
+  const clearFilters = () => {
+    setVehicleFilter(ALL_VEHICLES);
+    setTankFilter(ALL_TANKS);
+    setSearch("");
+    setFromDate("");
+    setToDate("");
+    pagination.setPage(1);
+  };
 
   // Compute per-vehicle efficiency points so intervals never mix vehicles
   const efficiencyPoints = useMemo(() => {
@@ -248,13 +315,17 @@ export default function FuelPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           <Select
             value={vehicleFilter}
+            items={vehicleFilterItems}
             onValueChange={(value) => {
-              if (value) setVehicleFilter(value);
+              if (value) {
+                setVehicleFilter(value);
+                pagination.setPage(1);
+              }
             }}
           >
             <SelectTrigger
               aria-label="Filter fuel logs by vehicle"
-              className="h-10 w-48 rounded-xl"
+              className="w-52"
             >
               <SelectValue placeholder="All vehicles" />
             </SelectTrigger>
@@ -281,154 +352,254 @@ export default function FuelPage() {
       </div>
 
       {/* Summary KPIs + Sparkline */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Total fuel spend</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {formatCurrency(totalSpend)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">
-            {totalLiters.toFixed(1)} liters across {filteredLogs.length} fill-ups
-          </CardContent>
-        </Card>
+      <StaggerGrid className="grid gap-4 md:grid-cols-3">
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Total fuel spend</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {formatCurrency(totalSpend)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground">
+              {totalLiters.toFixed(1)} liters across {filteredLogs.length} fill-ups
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="pb-2">
-            <CardDescription>Average efficiency</CardDescription>
-            <CardTitle className="font-display text-2xl">
-              {avgEfficiency !== null ? `${avgEfficiency} km/L` : "N/A"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">
-            Computed between consecutive full-tank fill-ups
-          </CardContent>
-        </Card>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardDescription>Average efficiency</CardDescription>
+              <CardTitle className="font-display text-2xl">
+                {avgEfficiency !== null ? `${avgEfficiency} km/L` : "N/A"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground">
+              Computed between consecutive full-tank fill-ups
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardDescription>Efficiency trend</CardDescription>
-            <TrendingUp className="h-4 w-4 text-[var(--brand-teal)]" />
-          </CardHeader>
-          <CardContent>
-            <Sparkline
-              values={efficiencyPoints.map((p) => p.kmPerLiter)}
-              labels={efficiencyPoints.map((p) => formatShortDate(p.date))}
-            />
-          </CardContent>
-        </Card>
-      </div>
+        <StaggerItem>
+          <Card className="h-full rounded-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardDescription>Efficiency trend</CardDescription>
+              <TrendingUp className="h-4 w-4 text-[var(--brand-teal)]" />
+            </CardHeader>
+            <CardContent>
+              <Sparkline
+                values={efficiencyPoints.map((p) => p.kmPerLiter)}
+                labels={efficiencyPoints.map((p) => formatShortDate(p.date))}
+              />
+            </CardContent>
+          </Card>
+        </StaggerItem>
+      </StaggerGrid>
 
       {/* Fuel log table */}
       <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-lg">Fill-up history</CardTitle>
-          <CardDescription>
-            Full-tank logs display the calculated km/L for the interval since
-            the previous full tank.
-          </CardDescription>
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle className="text-lg">Fill-up history</CardTitle>
+            <CardDescription>
+              Full-tank logs display the calculated km/L for the interval since
+              the previous full tank.
+            </CardDescription>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="relative lg:col-span-4">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                aria-label="Search fuel logs"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  pagination.setPage(1);
+                }}
+                placeholder="Search vehicle or plate..."
+                className="pl-10"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <Select
+                value={tankFilter}
+                items={TANK_FILTER_ITEMS}
+                onValueChange={(value) => {
+                  if (value) {
+                    setTankFilter(value);
+                    pagination.setPage(1);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter by tank type" className="w-full">
+                  <SelectValue placeholder="All tank types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TANKS}>All tank types</SelectItem>
+                  <SelectItem value="full">Full tank</SelectItem>
+                  <SelectItem value="partial">Partial fill</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="lg:col-span-4">
+              <DateRangePicker
+                aria-label="Filter fuel logs by date range"
+                fromDate={fromDate}
+                toDate={toDate}
+                onChange={({ fromDate: nextFrom, toDate: nextTo }) => {
+                  setFromDate(nextFrom);
+                  setToDate(nextTo);
+                  pagination.setPage(1);
+                }}
+                placeholder="Filter by date range"
+              />
+            </div>
+
+            <div className="flex items-center lg:col-span-1">
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="h-10 w-full rounded-xl px-2.5"
+                  aria-label="Reset filters"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filteredLogs.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
               <Fuel className="h-8 w-8 text-[var(--brand-teal)]" />
               <p className="mt-3 text-sm font-medium text-foreground">
-                No fuel logs yet
+                {hasActiveFilters ? "No fuel logs match your filters" : "No fuel logs yet"}
               </p>
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Record your first fill-up to start tracking fuel spend and km/L
-                efficiency.
+                {hasActiveFilters
+                  ? "Try adjusting or clearing your vehicle, tank, or date range filters."
+                  : "Record your first fill-up to start tracking fuel spend and km/L efficiency."}
               </p>
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="mt-4 rounded-xl"
+                >
+                  Clear filters
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead className="text-right">Liters</TableHead>
-                    <TableHead className="text-right">Price / L</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Odometer</TableHead>
-                    <TableHead>Tank</TableHead>
-                    <TableHead className="text-right">Efficiency</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredLogs.map((log) => {
-                    const vehicle = vehiclesById.get(log.vehicleId);
-                    const eff = efficiencyByLogId.get(log.id);
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                          {formatShortDate(log.date)}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {vehicle?.name ?? "Unknown"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {log.liters.toFixed(1)} L
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatCurrency(log.pricePerLiter)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(log.totalCost)}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatKm(log.odometerKm)} km
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={log.fullTank ? "secondary" : "outline"}
-                            className="rounded-lg"
-                          >
-                            {log.fullTank ? "Full" : "Partial"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {eff !== undefined ? (
-                            <Badge className="rounded-lg border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]">
-                              {eff} km/L
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead className="text-right">Liters</TableHead>
+                      <TableHead className="text-right">Price / L</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Odometer</TableHead>
+                      <TableHead>Tank</TableHead>
+                      <TableHead className="text-right">Efficiency</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagination.pageItems.map((log) => {
+                      const vehicle = vehiclesById.get(log.vehicleId);
+                      const eff = efficiencyByLogId.get(log.id);
+                      return (
+                        <TableRow key={log.id}>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {formatShortDate(log.date)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {vehicle?.name ?? "Unknown"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {log.liters.toFixed(1)} L
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatCurrency(log.pricePerLiter)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(log.totalCost)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatKm(log.odometerKm)} km
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={log.fullTank ? "secondary" : "outline"}
+                              className="rounded-lg"
+                            >
+                              {log.fullTank ? "Full" : "Partial"}
                             </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="inline-flex items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Edit fuel log"
-                              onClick={() => openEditDialog(log)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Delete fuel log"
-                              onClick={() => setDeletingLog(log)}
-                              className="text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {eff !== undefined ? (
+                              <Badge className="rounded-lg border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]">
+                                {eff} km/L
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Edit fuel log"
+                                onClick={() => openEditDialog(log)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Delete fuel log"
+                                onClick={() => setDeletingLog(log)}
+                                className="text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <TablePagination
+                page={pagination.page}
+                pageSize={pagination.pageSize}
+                totalItems={pagination.totalItems}
+                totalPages={pagination.totalPages}
+                startIndex={pagination.startIndex}
+                endIndex={pagination.endIndex}
+                onPageChange={pagination.setPage}
+                onPageSizeChange={pagination.setPageSize}
+                itemLabel="fuel logs"
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -450,6 +621,7 @@ export default function FuelPage() {
               <Label htmlFor="fuel-vehicle">Vehicle</Label>
               <Select
                 value={form.vehicleId}
+                items={vehicleSelectItems}
                 onValueChange={(value) => {
                   if (!value) return;
                   const veh = vehiclesById.get(value);
@@ -463,10 +635,7 @@ export default function FuelPage() {
                   }));
                 }}
               >
-                <SelectTrigger
-                  id="fuel-vehicle"
-                  className="h-10 w-full rounded-xl"
-                >
+                <SelectTrigger id="fuel-vehicle" className="w-full">
                   <SelectValue placeholder="Select vehicle" />
                 </SelectTrigger>
                 <SelectContent>
@@ -482,15 +651,11 @@ export default function FuelPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="fuel-date">Date</Label>
-                <Input
+                <DatePicker
                   id="fuel-date"
-                  type="date"
-                  required
                   value={form.date}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, date: e.target.value }))
-                  }
-                  className="h-10 rounded-xl"
+                  onChange={(date) => setForm((prev) => ({ ...prev, date }))}
+                  placeholder="Select fill-up date"
                 />
               </div>
 
@@ -506,7 +671,6 @@ export default function FuelPage() {
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, odometerKm: e.target.value }))
                   }
-                  className="h-10 rounded-xl"
                 />
               </div>
             </div>

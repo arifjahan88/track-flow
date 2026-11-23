@@ -22,6 +22,10 @@ export const VEHICLE_TYPES: readonly VehicleType[] = [
   "Motorcycle",
 ];
 
+const VEHICLE_TYPE_ITEMS: Record<string, string> = Object.fromEntries(
+  VEHICLE_TYPES.map((t) => [t, t])
+);
+
 export interface VehicleFormValues {
   name: string;
   plate: string;
@@ -109,11 +113,12 @@ export function VehicleForm({
           <Label htmlFor="vehicle-type">Vehicle type</Label>
           <Select
             value={type}
+            items={VEHICLE_TYPE_ITEMS}
             onValueChange={(value) => {
               if (value) setType(value as VehicleType);
             }}
           >
-            <SelectTrigger id="vehicle-type" className="h-10 w-full rounded-xl">
+            <SelectTrigger id="vehicle-type" className="w-full">
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>

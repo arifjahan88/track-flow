@@ -16,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
+import { PageTransition } from "@/components/motion";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -208,7 +209,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          {children}
+          <PageTransition key={pathname}>{children}</PageTransition>
         </main>
       </div>
     </div>

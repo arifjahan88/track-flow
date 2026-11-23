@@ -17,7 +17,9 @@ import {
   Pause,
   Play,
   Radio,
+  RotateCcw,
   Route,
+  Search,
   Square,
   Zap,
 } from "lucide-react";
@@ -26,6 +28,7 @@ import {
   getActiveWaypointTelemetry,
   RouteMap,
 } from "@/components/route-map";
+import { TablePagination, usePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +38,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +86,8 @@ import {
 import type { Trip } from "@/types";
 
 const NO_DRIVER_VALUE = "__none__";
+const ALL_VEHICLES = "__all__";
+const ALL_DRIVERS = "__all_drivers__";
 
 const PURPOSE_PRESETS = [
   "Client delivery",
@@ -133,6 +139,11 @@ export default function TripsPage() {
   const [selectedHistoryTrip, setSelectedHistoryTrip] = useState<Trip | null>(
     null
   );
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyVehicleFilter, setHistoryVehicleFilter] = useState(ALL_VEHICLES);
+  const [historyDriverFilter, setHistoryDriverFilter] = useState(ALL_DRIVERS);
+  const [historyFromDate, setHistoryFromDate] = useState("");
+  const [historyToDate, setHistoryToDate] = useState("");
 
   const effectiveVehicleId = selectedVehicleId || vehicles[0]?.id || "";
 
@@ -174,6 +185,90 @@ export default function TripsPage() {
     () => new Map(drivers.map((d) => [d.id, d])),
     [drivers]
   );
+
+  const vehicleSelectItems = useMemo(() => {
+    const items: Record<string, string> = {};
+    for (const v of vehicles) {
+      items[v.id] = `${v.name} (${v.plate})`;
+    }
+    return items;
+  }, [vehicles]);
+
+  const vehicleFilterItems = useMemo(
+    () => ({ [ALL_VEHICLES]: "All vehicles", ...vehicleSelectItems }),
+    [vehicleSelectItems]
+  );
+
+  const dispatchDriverItems = useMemo(() => {
+    const items: Record<string, string> = { [NO_DRIVER_VALUE]: "Unassigned" };
+    for (const d of drivers) {
+      items[d.id] = d.name;
+    }
+    return items;
+  }, [drivers]);
+
+  const driverFilterItems = useMemo(() => {
+    const items: Record<string, string> = { [ALL_DRIVERS]: "All drivers" };
+    for (const d of drivers) {
+      items[d.id] = d.name;
+    }
+    return items;
+  }, [drivers]);
+
+  const filteredCompletedTrips = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    return completedTrips.filter((trip) => {
+      if (
+        historyVehicleFilter !== ALL_VEHICLES &&
+        trip.vehicleId !== historyVehicleFilter
+      ) {
+        return false;
+      }
+      if (
+        historyDriverFilter !== ALL_DRIVERS &&
+        trip.driverId !== historyDriverFilter
+      ) {
+        return false;
+      }
+      const tripDay = trip.startedAt.slice(0, 10);
+      if (historyFromDate && tripDay < historyFromDate) return false;
+      if (historyToDate && tripDay > historyToDate) return false;
+      if (q) {
+        const vehicle = vehiclesById.get(trip.vehicleId);
+        const driver = trip.driverId ? driversById.get(trip.driverId) : undefined;
+        const hay = `${trip.purpose} ${vehicle?.name ?? ""} ${vehicle?.plate ?? ""} ${driver?.name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [
+    completedTrips,
+    historyVehicleFilter,
+    historyDriverFilter,
+    historyFromDate,
+    historyToDate,
+    historySearch,
+    vehiclesById,
+    driversById,
+  ]);
+
+  const historyPagination = usePagination(filteredCompletedTrips, 10);
+
+  const hasHistoryFilters =
+    historySearch.trim() !== "" ||
+    historyVehicleFilter !== ALL_VEHICLES ||
+    historyDriverFilter !== ALL_DRIVERS ||
+    historyFromDate !== "" ||
+    historyToDate !== "";
+
+  const clearHistoryFilters = () => {
+    setHistorySearch("");
+    setHistoryVehicleFilter(ALL_VEHICLES);
+    setHistoryDriverFilter(ALL_DRIVERS);
+    setHistoryFromDate("");
+    setHistoryToDate("");
+    historyPagination.setPage(1);
+  };
 
   // Live speed computed from last 2 points (capped at 160 km/h)
   const liveSpeedKmh = useMemo(() => {
@@ -607,13 +702,11 @@ export default function TripsPage() {
                   <Label htmlFor="trip-vehicle">Assigned Vehicle</Label>
                   <Select
                     value={effectiveVehicleId}
+                    items={vehicleSelectItems}
                     onValueChange={handleVehicleChange}
                     disabled={vehicles.length === 0}
                   >
-                    <SelectTrigger
-                      id="trip-vehicle"
-                      className="h-10 w-full rounded-xl"
-                    >
+                    <SelectTrigger id="trip-vehicle" className="w-full">
                       <SelectValue placeholder="Select a vehicle" />
                     </SelectTrigger>
                     <SelectContent>
@@ -630,14 +723,12 @@ export default function TripsPage() {
                   <Label htmlFor="trip-driver">Operator / Driver</Label>
                   <Select
                     value={selectedDriverId}
+                    items={dispatchDriverItems}
                     onValueChange={(value) => {
                       if (value) setSelectedDriverId(value);
                     }}
                   >
-                    <SelectTrigger
-                      id="trip-driver"
-                      className="h-10 w-full rounded-xl"
-                    >
+                    <SelectTrigger id="trip-driver" className="w-full">
                       <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
                     <SelectContent>
@@ -827,99 +918,226 @@ export default function TripsPage() {
 
       {/* Trip History Table */}
       <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-lg">Recorded Navigation Logs</CardTitle>
-          <CardDescription>
-            Select any completed trip to inspect its GPS route replay and
-            telemetry summary.
-          </CardDescription>
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle className="text-lg">
+              Recorded Navigation Logs ({filteredCompletedTrips.length})
+            </CardTitle>
+            <CardDescription>
+              Select any completed trip to inspect its GPS route replay and
+              telemetry summary.
+            </CardDescription>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="relative lg:col-span-3">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                aria-label="Search trip history"
+                value={historySearch}
+                onChange={(e) => {
+                  setHistorySearch(e.target.value);
+                  historyPagination.setPage(1);
+                }}
+                placeholder="Search purpose, plate, driver..."
+                className="pl-10"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <Select
+                value={historyVehicleFilter}
+                items={vehicleFilterItems}
+                onValueChange={(value) => {
+                  if (value) {
+                    setHistoryVehicleFilter(value);
+                    historyPagination.setPage(1);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter trips by vehicle" className="w-full">
+                  <SelectValue placeholder="All vehicles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VEHICLES}>All vehicles</SelectItem>
+                  {vehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.name} ({v.plate})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="lg:col-span-2">
+              <Select
+                value={historyDriverFilter}
+                items={driverFilterItems}
+                onValueChange={(value) => {
+                  if (value) {
+                    setHistoryDriverFilter(value);
+                    historyPagination.setPage(1);
+                  }
+                }}
+              >
+                <SelectTrigger aria-label="Filter trips by driver" className="w-full">
+                  <SelectValue placeholder="All drivers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_DRIVERS}>All drivers</SelectItem>
+                  {drivers.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="lg:col-span-3">
+              <DateRangePicker
+                aria-label="Filter trips by date range"
+                fromDate={historyFromDate}
+                toDate={historyToDate}
+                align="end"
+                onChange={({ fromDate: nextFrom, toDate: nextTo }) => {
+                  setHistoryFromDate(nextFrom);
+                  setHistoryToDate(nextTo);
+                  historyPagination.setPage(1);
+                }}
+                placeholder="Filter by date range"
+              />
+            </div>
+
+            <div className="flex items-center lg:col-span-1">
+              {hasHistoryFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearHistoryFilters}
+                  aria-label="Reset trip history filters"
+                  className="h-10 w-full rounded-xl px-2.5"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {completedTrips.length === 0 ? (
+          {filteredCompletedTrips.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
               <Route className="h-8 w-8 text-primary" />
               <p className="mt-3 text-sm font-medium text-foreground">
-                No completed trips recorded yet
+                {hasHistoryFilters
+                  ? "No trips match your filters"
+                  : "No completed trips recorded yet"}
               </p>
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Start and finish a navigation run above to log the route and
-                automatically update the vehicle odometer.
+                {hasHistoryFilters
+                  ? "Try adjusting or clearing your search, vehicle, driver, or date range filters."
+                  : "Start and finish a navigation run above to log the route and automatically update the vehicle odometer."}
               </p>
+              {hasHistoryFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={clearHistoryFilters}
+                  className="mt-4 rounded-xl"
+                >
+                  Clear filters
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Purpose</TableHead>
-                    <TableHead className="text-right">Distance</TableHead>
-                    <TableHead className="text-right">Duration</TableHead>
-                    <TableHead className="text-right">Top speed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {completedTrips.map((trip) => {
-                    const vehicle = vehiclesById.get(trip.vehicleId);
-                    const driver = trip.driverId
-                      ? driversById.get(trip.driverId)
-                      : undefined;
-                    const durationMs = trip.endedAt
-                      ? Math.max(
-                          0,
-                          new Date(trip.endedAt).getTime() -
-                            new Date(trip.startedAt).getTime()
-                        )
-                      : 0;
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Purpose</TableHead>
+                      <TableHead className="text-right">Distance</TableHead>
+                      <TableHead className="text-right">Duration</TableHead>
+                      <TableHead className="text-right">Top speed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historyPagination.pageItems.map((trip) => {
+                      const vehicle = vehiclesById.get(trip.vehicleId);
+                      const driver = trip.driverId
+                        ? driversById.get(trip.driverId)
+                        : undefined;
+                      const durationMs = trip.endedAt
+                        ? Math.max(
+                            0,
+                            new Date(trip.endedAt).getTime() -
+                              new Date(trip.startedAt).getTime()
+                          )
+                        : 0;
 
-                    return (
-                      <TableRow
-                        key={trip.id}
-                        tabIndex={0}
-                        role="button"
-                        onClick={() => setSelectedHistoryTrip(trip)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSelectedHistoryTrip(trip);
-                          }
-                        }}
-                        className="cursor-pointer transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                          {formatDateTime(trip.startedAt)}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {vehicle?.name ?? "Unknown"}
-                          {vehicle ? (
-                            <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                              {vehicle.plate}
-                            </span>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {driver?.name ?? "Unassigned"}
-                        </TableCell>
-                        <TableCell>{trip.purpose}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatKm(trip.distanceKm)} km
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatDuration(durationMs)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="secondary" className="rounded-lg">
-                            {formatSpeed(trip.maxSpeedKmh)} km/h
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                      return (
+                        <TableRow
+                          key={trip.id}
+                          tabIndex={0}
+                          role="button"
+                          onClick={() => setSelectedHistoryTrip(trip)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedHistoryTrip(trip);
+                            }
+                          }}
+                          className="cursor-pointer transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {formatDateTime(trip.startedAt)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {vehicle?.name ?? "Unknown"}
+                            {vehicle ? (
+                              <span className="ml-1.5 font-mono text-xs text-muted-foreground">
+                                {vehicle.plate}
+                              </span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {driver?.name ?? "Unassigned"}
+                          </TableCell>
+                          <TableCell>{trip.purpose}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatKm(trip.distanceKm)} km
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatDuration(durationMs)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="secondary" className="rounded-lg">
+                              {formatSpeed(trip.maxSpeedKmh)} km/h
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <TablePagination
+                page={historyPagination.page}
+                pageSize={historyPagination.pageSize}
+                totalItems={historyPagination.totalItems}
+                totalPages={historyPagination.totalPages}
+                startIndex={historyPagination.startIndex}
+                endIndex={historyPagination.endIndex}
+                onPageChange={historyPagination.setPage}
+                onPageSizeChange={historyPagination.setPageSize}
+                itemLabel="trips"
+              />
+            </>
           )}
         </CardContent>
       </Card>
