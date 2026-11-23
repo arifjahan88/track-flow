@@ -5,12 +5,12 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import type { User, UserRole } from "@/types";
 import { DEMO_PASSWORD_HASH, sha256 } from "@/lib/hash";
 
-const DEMO_USER_ID = "user-demo-admin";
+export const DEMO_USER_ID = "user-demo-admin";
 
-const SEED_USERS: User[] = [
+export const SEED_USERS: User[] = [
   {
     id: DEMO_USER_ID,
-    name: "Demo Admin",
+    name: "Alex Morgan",
     email: "demo@demo.com",
     passwordHash: DEMO_PASSWORD_HASH,
     role: "super_admin",
@@ -26,7 +26,7 @@ const SEED_USERS: User[] = [
   },
   {
     id: "user-dispatcher",
-    name: "Tariq Ahmed",
+    name: "Sarah Chen",
     email: "dispatch@demo.com",
     passwordHash: DEMO_PASSWORD_HASH,
     role: "dispatcher",
@@ -42,11 +42,58 @@ const SEED_USERS: User[] = [
   },
   {
     id: "user-driver",
-    name: "Rafiq Hasan",
+    name: "Marcus Vance",
     email: "driver@demo.com",
     passwordHash: DEMO_PASSWORD_HASH,
     role: "driver",
+    assignedVehicleId: "veh-1",
     createdAt: "2026-01-15T00:00:00.000Z",
+  },
+];
+
+export const DEMO_ACCOUNTS: Array<{
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  tagline: string;
+  assignedVehicleId?: string;
+}> = [
+  {
+    id: DEMO_USER_ID,
+    name: "Alex Morgan",
+    email: "demo@demo.com",
+    role: "super_admin",
+    tagline: "Full RBAC, telemetry, analytics & audit control",
+  },
+  {
+    id: "user-fleet-manager",
+    name: "Farhana Rahman",
+    email: "manager@demo.com",
+    role: "fleet_manager",
+    tagline: "Fleet operations, approvals, fuel & TCO reports",
+  },
+  {
+    id: "user-dispatcher",
+    name: "Sarah Chen",
+    email: "dispatch@demo.com",
+    role: "dispatcher",
+    tagline: "Live GPS dispatch, bookings & driver shifts",
+  },
+  {
+    id: "user-mechanic",
+    name: "Kamrul Islam",
+    email: "mechanic@demo.com",
+    role: "mechanic",
+    tagline: "Work orders, service rules & incident logs",
+  },
+  {
+    id: "user-driver",
+    name: "Marcus Vance",
+    email: "driver@demo.com",
+    role: "driver",
+    tagline: "Assigned to Atlas Hauler 01 (FP-8421)",
+    assignedVehicleId: "veh-1",
   },
 ];
 
@@ -62,7 +109,8 @@ interface AuthState {
     password: string,
     role?: UserRole
   ) => Promise<string | null>;
-  loginAsDemo: () => void;
+  loginAsDemo: (role?: UserRole) => void;
+  switchAccount: (userId: string) => void;
   switchRole: (role: UserRole) => void;
   updateUserRole: (userId: string, role: UserRole) => void;
   logout: () => void;
@@ -72,14 +120,18 @@ function normalizeUsers(rawUsers: unknown): User[] {
   if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
     return SEED_USERS;
   }
-  const normalized = (rawUsers as Partial<User>[]).map((u) => ({
-    id: u.id ?? `user-${crypto.randomUUID()}`,
-    name: u.name ?? "User",
-    email: u.email ?? "user@demo.com",
-    passwordHash: u.passwordHash ?? DEMO_PASSWORD_HASH,
-    role: (u.role ?? "super_admin") as UserRole,
-    createdAt: u.createdAt ?? "2026-01-01T00:00:00.000Z",
-  }));
+  const normalized: User[] = (rawUsers as Partial<User>[]).map((u) => {
+    const seedMatch = SEED_USERS.find((s) => s.email === u.email);
+    return {
+      id: u.id ?? seedMatch?.id ?? `user-${crypto.randomUUID()}`,
+      name: u.name ?? seedMatch?.name ?? "User",
+      email: u.email ?? "user@demo.com",
+      passwordHash: u.passwordHash ?? DEMO_PASSWORD_HASH,
+      role: (u.role ?? seedMatch?.role ?? "super_admin") as UserRole,
+      assignedVehicleId: u.assignedVehicleId ?? seedMatch?.assignedVehicleId,
+      createdAt: u.createdAt ?? "2026-01-01T00:00:00.000Z",
+    };
+  });
 
   for (const seed of SEED_USERS) {
     if (!normalized.some((u) => u.email === seed.email)) {
@@ -141,6 +193,7 @@ export const useAuthStore = create<AuthState>()(
           email: normalizedEmail,
           passwordHash,
           role,
+          assignedVehicleId: role === "driver" ? "veh-1" : undefined,
           createdAt: new Date().toISOString(),
         };
 
@@ -151,15 +204,26 @@ export const useAuthStore = create<AuthState>()(
         return null;
       },
 
-      loginAsDemo: () => {
-        const demo = get().users.find((u) => u.id === DEMO_USER_ID);
-        if (demo) {
-          set({ currentUserId: demo.id });
+      loginAsDemo: (role) => {
+        const targetRole = role ?? "super_admin";
+        const match = get().users.find((u) => u.role === targetRole);
+        if (match) {
+          set({ currentUserId: match.id });
         } else {
-          set((state) => ({
-            users: normalizeUsers(state.users),
-            currentUserId: DEMO_USER_ID,
-          }));
+          const normalized = normalizeUsers(get().users);
+          const fallback =
+            normalized.find((u) => u.role === targetRole) ?? normalized[0];
+          set({
+            users: normalized,
+            currentUserId: fallback?.id ?? DEMO_USER_ID,
+          });
+        }
+      },
+
+      switchAccount: (userId) => {
+        const target = get().users.find((u) => u.id === userId);
+        if (target) {
+          set({ currentUserId: target.id });
         }
       },
 
@@ -184,7 +248,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "tf-auth",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Partial<AuthState>;

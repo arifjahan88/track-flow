@@ -28,6 +28,7 @@ export interface User {
   email: string;
   passwordHash: string;
   role: UserRole;
+  assignedVehicleId?: string;
   createdAt: string;
 }
 
@@ -56,6 +57,14 @@ export interface AuditLogEntry {
   summary: string;
 }
 
+export interface VehicleLastLocation {
+  latitude: number;
+  longitude: number;
+  speed: number;
+  heading: number;
+  timestamp: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
@@ -75,6 +84,78 @@ export interface Vehicle {
   status?: VehicleLifecycleStatus;
   purchaseCost?: number;
   monthlyDepreciation?: number;
+  // Live vector telemetry fields
+  routeId?: string;
+  routeProgress?: number;
+  baseSpeedKmh?: number;
+  fuelLevelPercent?: number;
+  lastKnownLocation?: VehicleLastLocation;
+}
+
+export interface VectorPoint {
+  x: number;
+  y: number;
+}
+
+export interface CityRoute {
+  id: string;
+  name: string;
+  code: string;
+  color: string;
+  distanceKm: number;
+  estimatedMinutes: number;
+  description: string;
+  waypoints: VectorPoint[];
+}
+
+export interface VectorGeofence {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  color: string;
+  active: boolean;
+}
+
+export type FleetAlertSeverity = "info" | "warning" | "critical";
+
+export interface FleetAlert {
+  id: string;
+  severity: FleetAlertSeverity;
+  title: string;
+  message: string;
+  vehicleId?: string;
+  timestamp: number;
+  read: boolean;
+}
+
+export interface LiveVehicleFrame {
+  vehicleId: string;
+  x: number;
+  y: number;
+  latitude: number;
+  longitude: number;
+  headingDeg: number;
+  speedKmh: number;
+  routeProgress: number;
+  coveredPoints: VectorPoint[];
+  remainingPoints: VectorPoint[];
+}
+
+export interface SimulationTickUpdate {
+  vehicleId: string;
+  routeProgress: number;
+  latitude: number;
+  longitude: number;
+  speed: number;
+  heading: number;
+  deltaDistanceKm: number;
+  deltaFuelPercent: number;
+  timestamp: number;
 }
 
 export type ComplianceDocType =
@@ -143,6 +224,8 @@ export interface Trip {
   vehicleId: string;
   driverId?: string;
   purpose: string;
+  routeId?: string;
+  routeName?: string;
   status: TripStatus;
   startedAt: string;
   endedAt?: string;

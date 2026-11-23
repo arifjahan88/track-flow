@@ -1,11 +1,13 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   AlertTriangle,
   Car,
   FileCheck2,
   Gauge,
+  Navigation,
   Pencil,
   Trash2,
   Wrench,
@@ -201,16 +203,31 @@ export function VehicleCard({
         ) : null}
       </CardContent>
 
-      <CardFooter className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={onOpenDetails}
-          className="rounded-xl"
-        >
-          Vault &amp; logs
-        </Button>
+      <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenDetails}
+            className="rounded-xl"
+          >
+            Vault &amp; logs
+          </Button>
+
+          {effectiveStatus === "on_trip" || inTrip ? (
+            <Link href={`/trips?vehicle=${vehicle.id}`}>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 rounded-xl bg-cyan-500 font-semibold text-slate-950 shadow-[0_0_16px_rgba(6,182,212,0.3)] hover:bg-cyan-400"
+              >
+                <Navigation className="h-3.5 w-3.5" />
+                Live Track
+              </Button>
+            </Link>
+          ) : null}
+        </div>
 
         {canEdit ? (
           <div className="flex items-center gap-1.5">

@@ -1,431 +1,345 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowRight,
-  Car,
-  CheckCircle2,
-  ClipboardCheck,
-  FileWarning,
+  Compass,
   Navigation,
+  Plus,
   Route,
-  Wrench,
+  Truck,
 } from "lucide-react";
-import { AnimatedNumber } from "@/components/animated-number";
-import { StaggerGrid, StaggerItem } from "@/components/motion";
+import { FleetCharts } from "@/components/dashboard/fleet-charts";
+import { LiveFleetRoster } from "@/components/dashboard/live-fleet-roster";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
-import { COMPLIANCE_DOC_LABELS, getComplianceStatus } from "@/lib/compliance";
-import { formatDuration, formatKm, formatShortDate } from "@/lib/format";
-import { getMaintenanceStatus } from "@/lib/maintenance";
 import { ROLE_LABELS } from "@/lib/rbac";
 
 export default function DashboardPage() {
   const hydrated = useHydrated();
+  const router = useRouter();
+
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
 
   const vehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
   const trips = useFleetStore((s) => s.trips);
-  const activeTripId = useFleetStore((s) => s.activeTripId);
-  const maintenanceRecords = useFleetStore((s) => s.maintenanceRecords);
-  const complianceDocs = useFleetStore((s) => s.complianceDocs);
-  const bookings = useFleetStore((s) => s.bookings);
-  const workOrders = useFleetStore((s) => s.workOrders);
+  const fuelLogs = useFleetStore((s) => s.fuelLogs);
+  const alerts = useFleetStore((s) => s.alerts);
+  const markAlertRead = useFleetStore((s) => s.markAlertRead);
 
   if (!hydrated) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-9 w-64 rounded-xl" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-32 rounded-2xl" />
           ))}
         </div>
-        <Skeleton className="h-72 rounded-2xl" />
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-[320px] rounded-2xl" />
       </div>
     );
   }
 
   const currentUser = users.find((u) => u.id === currentUserId);
-  const firstName = currentUser?.name.split(" ")[0] ?? "Admin";
+  const activeRole = currentUser?.role ?? "super_admin";
+  const assignedVehicle =
+    activeRole === "driver"
+      ? vehicles.find(
+          (v) => v.id === (currentUser?.assignedVehicleId ?? "veh-1")
+        )
+      : undefined;
 
-  const completedTrips = trips.filter((t) => t.status === "done");
-  const totalDistanceKm = completedTrips.reduce((sum, t) => sum + t.distanceKm, 0);
-  const activeTrip = trips.find((t) => t.id === activeTripId && t.status !== "done");
-  const activeVehicle = activeTrip
-    ? vehicles.find((v) => v.id === activeTrip.vehicleId)
-    : undefined;
+  const totalUnits = vehicles.length;
+  const inTripCount = vehicles.filter((v) => v.status === "on_trip").length;
+  const standbyCount = vehicles.filter(
+    (v) => (v.status ?? "available") === "available"
+  ).length;
+  const maintenanceCount = vehicles.filter(
+    (v) => v.status === "under_maintenance"
+  ).length;
+  const inactiveCount = vehicles.filter(
+    (v) => v.status === "out_of_service" || v.status === "decommissioned"
+  ).length;
 
-  const vehiclesById = new Map(vehicles.map((v) => [v.id, v]));
-  const recentTrips = completedTrips.slice(0, 6);
+  const totalDistanceKm = trips.reduce((sum, t) => sum + t.distanceKm, 0);
+  const unreadAlerts = alerts.filter((a) => !a.read).length;
+  const criticalAlerts = alerts.filter((a) => a.severity === "critical").length;
 
-  const maintenanceAlerts = maintenanceRecords
-    .map((record) => {
-      const vehicle = vehiclesById.get(record.vehicleId);
-      const status = getMaintenanceStatus(
-        record,
-        vehicle?.odometerKm ?? 0,
-        undefined,
-        vehicle?.engineHours,
-      );
-      return { record, vehicle, status };
-    })
-    .filter((item) => item.status === "overdue" || item.status === "due_soon")
-    .sort((a, b) => (a.status === "overdue" ? -1 : b.status === "overdue" ? 1 : 0));
-
-  const complianceAlerts = complianceDocs
-    .map((doc) => ({
-      doc,
-      vehicle: vehiclesById.get(doc.vehicleId),
-      status: getComplianceStatus(doc.expiryDate),
-    }))
-    .filter((item) => item.status.level !== "valid")
-    .sort((a, b) => a.status.daysRemaining - b.status.daysRemaining);
-
-  const pendingBookingsCount = bookings.filter((b) => b.status === "pending").length;
-  const openWorkOrdersCount = workOrders.filter((w) => w.status !== "completed").length;
+  const pct = (n: number) =>
+    totalUnits > 0 ? Math.round((n / totalUnits) * 100) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">
-            Fleet overview · {currentUser?.role ? ROLE_LABELS[currentUser.role] : "Super Admin"}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Welcome back, {firstName}
-          </h1>
-        </div>
-        <Link href="/trips">
-          <Button className="rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90">
-            <Navigation className="mr-2 h-4 w-4" />
-            {activeTrip ? "Open live tracker" : "Start a trip"}
-          </Button>
-        </Link>
-      </div>
-
-      {/* Active trip banner */}
-      {activeTrip ? (
-        <div className="flex flex-col gap-4 rounded-2xl border border-(--brand-amber)/40 bg-(--brand-amber)/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="tf-live-pulse absolute inline-flex h-full w-full rounded-full bg-brand-amber" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-brand-amber" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                {activeTrip.status === "active" ? "Live trip in progress" : "Trip paused"} —{" "}
-                {activeVehicle?.name ?? "Vehicle"} ({activeVehicle?.plate})
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {activeTrip.purpose} · {formatKm(activeTrip.distanceKm)} km recorded ·{" "}
-                {activeTrip.points.length} points
-              </p>
+    <div className="space-y-5">
+      {/* Driver Role Assignment Spotlight Banner */}
+      {assignedVehicle ? (
+        <Card className="rounded-2xl border-cyan-500/35 bg-cyan-500/[0.06]">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400">
+                <Truck className="size-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-foreground">
+                    Assigned Vehicle: {assignedVehicle.name}
+                  </p>
+                  <Badge variant="outline" className="fp-telemetry text-[10px]">
+                    {assignedVehicle.plate}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Fuel {Math.round(assignedVehicle.fuelLevelPercent ?? 75)}% ·
+                  Odometer{" "}
+                  {Math.round(assignedVehicle.odometerKm).toLocaleString()} km ·
+                  Status:{" "}
+                  {(assignedVehicle.status ?? "available").replaceAll("_", " ")}
+                </p>
+              </div>
             </div>
-          </div>
-          bg-(--brand-amber)/10
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                router.push(`/trips?vehicle=${assignedVehicle.id}`)
+              }
+              className="gap-1.5 rounded-xl bg-cyan-500 font-semibold text-slate-950 hover:bg-cyan-400"
+            >
+              <Navigation className="size-3.5" />
+              Open Live Cockpit
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Operations Overview Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+            Operations Overview
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Signed in as{" "}
+            <span className="font-semibold text-foreground">
+              {currentUser?.name ?? "Alex Morgan"}
+            </span>{" "}
+            ({ROLE_LABELS[activeRole]}) — real-time local telemetry persisted to
+            browser storage.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/trips">
-            <Button size="sm" variant="outline" className="rounded-xl">
-              View tracking
-              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5 rounded-xl"
+            >
+              <Compass className="size-4 text-cyan-500" />
+              Live GPS Map
+            </Button>
+          </Link>
+          <Link href="/trips">
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 gap-1.5 rounded-xl bg-cyan-500 font-semibold text-slate-950 hover:bg-cyan-400"
+            >
+              <Plus className="size-4" />
+              Dispatch Trip
             </Button>
           </Link>
         </div>
-      ) : null}
+      </div>
 
-      {/* 4 KPI cards */}
-      <StaggerGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StaggerItem hoverLift>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Vehicles</CardTitle>
-              <Car className="h-4 w-4 text-brand-teal" />
-            </CardHeader>
-            <CardContent>
-              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-                <AnimatedNumber value={vehicles.length} />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Registered in your fleet</p>
-            </CardContent>
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem hoverLift>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Completed trips
-              </CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-brand-blue" />
-            </CardHeader>
-            <CardContent>
-              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-                <AnimatedNumber value={completedTrips.length} />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Logged in browser history</p>
-            </CardContent>
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem hoverLift>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Distance driven
-              </CardTitle>
-              <Route className="h-4 w-4 text-brand-teal" />
-            </CardHeader>
-            <CardContent>
-              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">
-                <AnimatedNumber value={totalDistanceKm} decimals={1} suffix=" km" />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Across all completed trips</p>
-            </CardContent>
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem hoverLift>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Active trip status
-              </CardTitle>
-              <Navigation className="h-4 w-4 text-brand-amber" />
-            </CardHeader>
-            <CardContent>
-              <div className="font-display text-2xl font-semibold tracking-tight text-foreground">
-                {activeTrip ? (activeTrip.status === "active" ? "Live" : "Paused") : "Idle"}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {activeTrip
-                  ? `${activeVehicle?.name ?? "Vehicle"} · ${formatKm(activeTrip.distanceKm)} km`
-                  : "Ready to track next route"}
-              </p>
-            </CardContent>
-          </Card>
-        </StaggerItem>
-      </StaggerGrid>
-
-      {/* Main grid: Recent trips + Maintenance alerts */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="rounded-2xl lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
+      {/* 4 KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="fp-glass rounded-2xl">
+          <CardContent className="flex items-start justify-between p-5">
             <div>
-              <CardTitle className="text-lg">Recent trips</CardTitle>
-              <CardDescription>Last six completed trips across your fleet</CardDescription>
+              <p className="text-xs font-medium text-muted-foreground">
+                Total Fleet
+              </p>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="fp-telemetry text-3xl font-bold text-foreground">
+                  {totalUnits}
+                </span>
+                <span className="text-xs text-muted-foreground">units</span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {standbyCount} ready on standby
+              </p>
             </div>
-            <Link href="/trips">
-              <Button variant="ghost" size="sm" className="rounded-xl">
-                All trips
-                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {recentTrips.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-10 text-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-brand-teal">
-                  <Route className="h-5 w-5" />
-                </div>
-                <p className="mt-3 text-sm font-medium text-foreground">No completed trips yet</p>
-                <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                  Start a simulated Dhaka route or live GPS trip to record distance, speed, and
-                  route history.
-                </p>
-                <Link href="/trips" className="mt-4">
-                  <Button
-                    size="sm"
-                    className="rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
-                  >
-                    Go to trips and tracking
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {recentTrips.map((trip) => {
-                  const vehicle = vehiclesById.get(trip.vehicleId);
-                  const durationMs = trip.endedAt
-                    ? Math.max(
-                        0,
-                        new Date(trip.endedAt).getTime() - new Date(trip.startedAt).getTime(),
-                      )
-                    : 0;
-                  return (
-                    <div
-                      key={trip.id}
-                      className="flex flex-col gap-2 py-3.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {trip.purpose}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {vehicle?.name ?? "Unknown vehicle"}
-                          {vehicle ? ` (${vehicle.plate})` : ""} · {formatShortDate(trip.startedAt)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs font-medium">
-                        <Badge variant="secondary" className="rounded-lg">
-                          {formatKm(trip.distanceKm)} km
-                        </Badge>
-                        <span className="text-muted-foreground">{formatDuration(durationMs)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex size-10 items-center justify-center rounded-xl bg-cyan-500/12 text-cyan-600 dark:text-cyan-400">
+              <Truck className="size-5" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
+        <Card className="fp-glass rounded-2xl">
+          <CardContent className="flex items-start justify-between p-5">
             <div>
-              <CardTitle className="text-lg">Maintenance alerts</CardTitle>
-              <CardDescription>Overdue and due within 14 days</CardDescription>
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                Active Trips
+                {inTripCount > 0 ? (
+                  <span className="animate-fp-pulse-dot size-2 rounded-full bg-emerald-500" />
+                ) : null}
+              </p>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="fp-telemetry text-3xl font-bold text-foreground">
+                  {inTripCount}
+                </span>
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  live
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {inTripCount} ongoing corridors
+              </p>
             </div>
-            <Wrench className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {maintenanceAlerts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
-                <CheckCircle2 className="h-8 w-8 text-brand-teal" />
-                <p className="mt-2 text-sm font-medium text-foreground">
-                  All vehicles are up to date
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  No overdue or upcoming services require immediate action.
-                </p>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400">
+              <Compass className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="fp-glass rounded-2xl">
+          <CardContent className="flex items-start justify-between p-5">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">
+                Distance Covered
+              </p>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="fp-telemetry text-3xl font-bold text-foreground">
+                  {totalDistanceKm.toFixed(1)}
+                </span>
+                <span className="text-xs text-muted-foreground">km</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {maintenanceAlerts.map(({ record, vehicle, status }) => (
-                  <div key={record.id} className="rounded-xl border border-border bg-muted/30 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{record.title}</p>
-                      <Badge
-                        variant={status === "overdue" ? "destructive" : "secondary"}
-                        className={
-                          status === "due_soon"
-                            ? "border-(--brand-amber)/40 bg-(--brand-amber)/15 text-brand-amber"
-                            : ""
-                        }
-                      >
-                        {status === "overdue" ? "Overdue" : "Due soon"}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {vehicle?.name ?? "Vehicle"} ({vehicle?.plate})
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                      {record.scheduledDate ? (
-                        <span className="inline-flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" />
-                          Due {formatShortDate(record.scheduledDate)}
-                        </span>
-                      ) : null}
-                      {typeof record.dueOdometerKm === "number" ? (
-                        <span>At {record.dueOdometerKm.toLocaleString("en-US")} km</span>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-                <Link href="/maintenance" className="block pt-1">
-                  <Button variant="outline" size="sm" className="w-full rounded-xl">
-                    Manage maintenance
-                  </Button>
-                </Link>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Across {trips.length} tracked manifests
+              </p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/12 text-sky-600 dark:text-sky-400">
+              <Route className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="fp-glass rounded-2xl">
+          <CardContent className="flex items-start justify-between p-5">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">
+                Active Alerts
+              </p>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="fp-telemetry text-3xl font-bold text-foreground">
+                  {unreadAlerts}
+                </span>
+                <span className="text-xs text-muted-foreground">unread</span>
               </div>
-            )}
+              <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400">
+                {criticalAlerts} critical threshold
+              </p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-xl bg-rose-500/12 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="size-5" />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Compliance & Operations Pulse Row */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+      {/* Fleet Status Distribution Segmented Bar */}
+      <Card className="fp-glass rounded-2xl">
+        <CardContent className="space-y-3 p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="text-base">Compliance Vault Alerts</CardTitle>
-              <CardDescription>Documents expiring within 30 / 15 / 7 days</CardDescription>
-            </div>
-            <FileWarning className="h-4 w-4 text-brand-amber" />
-          </CardHeader>
-          <CardContent>
-            {complianceAlerts.length === 0 ? (
+              <p className="text-sm font-semibold text-foreground">
+                Fleet Status Distribution
+              </p>
               <p className="text-xs text-muted-foreground">
-                All tax tokens, fitness certificates, permits, and insurance policies are current.
+                Live operational availability across all {totalUnits} units
               </p>
-            ) : (
-              <div className="space-y-2">
-                {complianceAlerts.slice(0, 4).map(({ doc, vehicle, status }) => (
-                  <div
-                    key={doc.id}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/25 px-3 py-2 text-xs"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-foreground">
-                        {vehicle?.name ?? "Vehicle"} · {COMPLIANCE_DOC_LABELS[doc.docType]}
-                      </p>
-                      <p className="text-muted-foreground">Exp {formatShortDate(doc.expiryDate)}</p>
-                    </div>
-                    <Badge
-                      variant={
-                        status.level === "expired" || status.level === "critical_7d"
-                          ? "destructive"
-                          : "secondary"
-                      }
-                    >
-                      {status.label}
-                    </Badge>
-                  </div>
-                ))}
-                <Link href="/vehicles" className="block pt-1">
-                  <Button variant="outline" size="sm" className="w-full rounded-xl">
-                    Open compliance vault
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+            <div className="fp-telemetry flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-cyan-500" />
+                In Trip:{" "}
+                <strong className="text-foreground">
+                  {inTripCount} ({pct(inTripCount)}%)
+                </strong>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-500" />
+                Active:{" "}
+                <strong className="text-foreground">
+                  {standbyCount} ({pct(standbyCount)}%)
+                </strong>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-amber-500" />
+                Maintenance:{" "}
+                <strong className="text-foreground">
+                  {maintenanceCount} ({pct(maintenanceCount)}%)
+                </strong>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-slate-400" />
+                Inactive:{" "}
+                <strong className="text-foreground">
+                  {inactiveCount} ({pct(inactiveCount)}%)
+                </strong>
+              </span>
+            </div>
+          </div>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle className="text-base">Operations Queue</CardTitle>
-              <CardDescription>Pending dispatch approvals and active shop repairs</CardDescription>
-            </div>
-            <ClipboardCheck className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/25 px-3.5 py-2.5 text-sm">
-              <span>Pending trip bookings</span>
-              <Link href="/trips">
-                <Badge variant="secondary" className="rounded-lg">
-                  {pendingBookingsCount} pending
-                </Badge>
-              </Link>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/25 px-3.5 py-2.5 text-sm">
-              <span>Active maintenance work orders</span>
-              <Link href="/maintenance">
-                <Badge variant="secondary" className="rounded-lg">
-                  {openWorkOrdersCount} open
-                </Badge>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            {inTripCount > 0 ? (
+              <div
+                className="h-full bg-cyan-500 transition-all duration-500"
+                style={{ width: `${pct(inTripCount)}%` }}
+              />
+            ) : null}
+            {standbyCount > 0 ? (
+              <div
+                className="h-full bg-emerald-500 transition-all duration-500"
+                style={{ width: `${pct(standbyCount)}%` }}
+              />
+            ) : null}
+            {maintenanceCount > 0 ? (
+              <div
+                className="h-full bg-amber-500 transition-all duration-500"
+                style={{ width: `${pct(maintenanceCount)}%` }}
+              />
+            ) : null}
+            {inactiveCount > 0 ? (
+              <div
+                className="h-full bg-slate-400 transition-all duration-500"
+                style={{ width: `${pct(inactiveCount)}%` }}
+              />
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Analytics Row: Area Chart + Status Donut */}
+      <FleetCharts vehicles={vehicles} trips={trips} fuelLogs={fuelLogs} />
+
+      {/* Live Fleet Roster & Recent Alerts Feed */}
+      <LiveFleetRoster
+        vehicles={vehicles}
+        drivers={drivers}
+        alerts={alerts}
+        onMarkAlertRead={markAlertRead}
+      />
     </div>
   );
 }

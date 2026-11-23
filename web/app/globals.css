@@ -171,6 +171,90 @@
   animation: tf-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes fpRadarSweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fpSonarRing {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes fpDashFlow {
+  0% {
+    stroke-dashoffset: 36;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fpPulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.25);
+  }
+}
+
+.animate-fp-radar {
+  animation: fpRadarSweep 7s linear infinite;
+}
+
+.animate-fp-sonar {
+  animation: fpSonarRing 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-fp-sonar-delayed {
+  animation: fpSonarRing 2.2s cubic-bezier(0.16, 1, 0.3, 1) 1.1s infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-fp-dash {
+  animation: fpDashFlow 1.2s linear infinite;
+}
+
+.animate-fp-pulse-dot {
+  animation: fpPulseDot 1.8s ease-in-out infinite;
+}
+
+.fp-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+}
+
+.fp-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(6, 182, 212, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+.fp-telemetry {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tf-live-pulse,
   .animate-pulse,

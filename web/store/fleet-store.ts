@@ -8,6 +8,7 @@ import type {
   Driver,
   DriverLeave,
   DriverShift,
+  FleetAlert,
   FleetExportPayload,
   FuelLog,
   GeofenceAlert,
@@ -17,37 +18,59 @@ import type {
   MaintenanceRecord,
   MaintenanceType,
   OperatingExpense,
+  SimulationTickUpdate,
   TrackPoint,
   Trip,
   TripBooking,
   TripChecklist,
   TripWaypoint,
   UserRole,
+  VectorGeofence,
   Vehicle,
   VehicleLifecycleStatus,
   WorkOrder,
   WorkOrderStatus,
 } from "@/types";
-import { haversineKm, isUsefulPoint, SIM_ROUTE } from "@/lib/geo";
+import { haversineKm, isUsefulPoint } from "@/lib/geo";
 import { evaluateGeofenceTransitions } from "@/lib/geofence";
+import { getRouteById } from "@/lib/city-routes";
+import { interpolateRoutePosition } from "@/lib/geo-sim";
+import {
+  createSeedAlerts,
+  createSeedAuditLogs,
+  createSeedBookings,
+  createSeedComplianceDocs,
+  createSeedDrivers,
+  createSeedExpenses,
+  createSeedFuelLogs,
+  createSeedGeofences,
+  createSeedIncidents,
+  createSeedMaintenance,
+  createSeedTrips,
+  createSeedVectorGeofences,
+  createSeedVehicles,
+  createSeedWorkOrders,
+} from "@/lib/seed-data";
 import { useAuthStore } from "@/store/auth-store";
 
+export {
+  createSeedAlerts,
+  createSeedAuditLogs,
+  createSeedBookings,
+  createSeedComplianceDocs,
+  createSeedDrivers,
+  createSeedExpenses,
+  createSeedFuelLogs,
+  createSeedGeofences,
+  createSeedIncidents,
+  createSeedMaintenance,
+  createSeedTrips,
+  createSeedVectorGeofences,
+  createSeedVehicles,
+  createSeedWorkOrders,
+};
+
 const MAX_SPEED_KMH = 160;
-
-function daysFromNowIso(days: number): string {
-  const date = new Date(Date.now() + days * 86_400_000);
-  return date.toISOString().slice(0, 10);
-}
-
-function dateTimeFromNow(
-  daysOffset: number,
-  hourUtc: number,
-  minuteUtc: number
-): number {
-  const base = new Date(Date.now() + daysOffset * 86_400_000);
-  base.setUTCHours(hourUtc, minuteUtc, 0, 0);
-  return base.getTime();
-}
 
 function getCurrentActor(): {
   actorId: string;
@@ -92,729 +115,6 @@ function makeAudit(
   };
 }
 
-function buildSeedTrackPoints(
-  startIndex: number,
-  endIndex: number,
-  startMs: number,
-  durationMinutes: number,
-  reverse = false
-): TrackPoint[] {
-  const safeStart = Math.max(0, Math.min(SIM_ROUTE.length - 2, startIndex));
-  const safeEnd = Math.max(
-    safeStart + 1,
-    Math.min(SIM_ROUTE.length - 1, endIndex)
-  );
-  const slice = SIM_ROUTE.slice(safeStart, safeEnd + 1);
-  const ordered = reverse ? [...slice].reverse() : slice;
-
-  const step = Math.max(1, Math.floor(ordered.length / 45));
-  const sampled = ordered.filter(
-    (_, idx) => idx % step === 0 || idx === ordered.length - 1
-  );
-
-  const durationMs = durationMinutes * 60_000;
-  return sampled.map((pt, idx) => ({
-    lat: pt.lat,
-    lng: pt.lng,
-    t: Math.round(
-      startMs + (idx / Math.max(1, sampled.length - 1)) * durationMs
-    ),
-  }));
-}
-
-export function createSeedTrips(): Trip[] {
-  const specs: {
-    id: string;
-    vehicleId: string;
-    driverId: string;
-    purpose: string;
-    daysOffset: number;
-    hourUtc: number;
-    minuteUtc: number;
-    durationMinutes: number;
-    distanceKm: number;
-    maxSpeedKmh: number;
-    startIndex: number;
-    endIndex: number;
-    reverse?: boolean;
-    harshBraking: number;
-    speeding: number;
-    idleMinutes: number;
-    onTime: boolean;
-  }[] = [
-    {
-      id: "trip-seed-1",
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      purpose: "Morning pharmaceutical distribution",
-      daysOffset: 0,
-      hourUtc: 2,
-      minuteUtc: 15,
-      durationMinutes: 27,
-      distanceKm: 14.85,
-      maxSpeedKmh: 58,
-      startIndex: 0,
-      endIndex: 360,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 6,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-2",
-      vehicleId: "veh-sedan-3390",
-      driverId: "drv-nadia",
-      purpose: "Executive airport transfer",
-      daysOffset: -1,
-      hourUtc: 11,
-      minuteUtc: 10,
-      durationMinutes: 38,
-      distanceKm: 18.4,
-      maxSpeedKmh: 64,
-      startIndex: 0,
-      endIndex: 360,
-      reverse: true,
-      harshBraking: 1,
-      speeding: 1,
-      idleMinutes: 9,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-3",
-      vehicleId: "veh-pickup-7781",
-      driverId: "drv-rafiq",
-      purpose: "Tejgaon warehouse hardware shuttle",
-      daysOffset: -1,
-      hourUtc: 4,
-      minuteUtc: 20,
-      durationMinutes: 31,
-      distanceKm: 11.2,
-      maxSpeedKmh: 52,
-      startIndex: 60,
-      endIndex: 310,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 5,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-4",
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      purpose: "Retail store restock — Hatirjheel loop",
-      daysOffset: -2,
-      hourUtc: 8,
-      minuteUtc: 30,
-      durationMinutes: 36,
-      distanceKm: 16.75,
-      maxSpeedKmh: 55,
-      startIndex: 20,
-      endIndex: 360,
-      harshBraking: 1,
-      speeding: 0,
-      idleMinutes: 11,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-5",
-      vehicleId: "veh-pickup-7781",
-      driverId: "drv-rafiq",
-      purpose: "Heavy equipment depot transfer",
-      daysOffset: -3,
-      hourUtc: 10,
-      minuteUtc: 15,
-      durationMinutes: 40,
-      distanceKm: 15.3,
-      maxSpeedKmh: 61,
-      startIndex: 40,
-      endIndex: 360,
-      reverse: true,
-      harshBraking: 0,
-      speeding: 1,
-      idleMinutes: 8,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-6",
-      vehicleId: "veh-sedan-3390",
-      driverId: "drv-nadia",
-      purpose: "Client headquarters briefing",
-      daysOffset: -3,
-      hourUtc: 3,
-      minuteUtc: 5,
-      durationMinutes: 29,
-      distanceKm: 9.6,
-      maxSpeedKmh: 48,
-      startIndex: 0,
-      endIndex: 240,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 4,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-7",
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      purpose: "Cold-chain grocery dispatch",
-      daysOffset: -4,
-      hourUtc: 5,
-      minuteUtc: 10,
-      durationMinutes: 34,
-      distanceKm: 13.9,
-      maxSpeedKmh: 54,
-      startIndex: 30,
-      endIndex: 340,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 7,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-8",
-      vehicleId: "veh-pickup-7781",
-      driverId: "drv-nadia",
-      purpose: "Construction site supply drop",
-      daysOffset: -5,
-      hourUtc: 7,
-      minuteUtc: 45,
-      durationMinutes: 43,
-      distanceKm: 19.15,
-      maxSpeedKmh: 63,
-      startIndex: 0,
-      endIndex: 360,
-      harshBraking: 1,
-      speeding: 1,
-      idleMinutes: 14,
-      onTime: false,
-    },
-    {
-      id: "trip-seed-9",
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      purpose: "Weekly regional hub replenishment",
-      daysOffset: -7,
-      hourUtc: 2,
-      minuteUtc: 40,
-      durationMinutes: 38,
-      distanceKm: 17.25,
-      maxSpeedKmh: 57,
-      startIndex: 0,
-      endIndex: 360,
-      reverse: true,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 6,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-10",
-      vehicleId: "veh-sedan-3390",
-      driverId: "drv-nadia",
-      purpose: "Financial district courier run",
-      daysOffset: -9,
-      hourUtc: 9,
-      minuteUtc: 20,
-      durationMinutes: 32,
-      distanceKm: 12.45,
-      maxSpeedKmh: 51,
-      startIndex: 50,
-      endIndex: 330,
-      harshBraking: 0,
-      speeding: 0,
-      idleMinutes: 5,
-      onTime: true,
-    },
-    {
-      id: "trip-seed-11",
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      purpose: "Central depot outbound freight",
-      daysOffset: -11,
-      hourUtc: 3,
-      minuteUtc: 50,
-      durationMinutes: 45,
-      distanceKm: 21.6,
-      maxSpeedKmh: 62,
-      startIndex: 0,
-      endIndex: 360,
-      harshBraking: 1,
-      speeding: 0,
-      idleMinutes: 10,
-      onTime: true,
-    },
-  ];
-
-  return specs.map((spec) => {
-    const startMs = dateTimeFromNow(
-      spec.daysOffset,
-      spec.hourUtc,
-      spec.minuteUtc
-    );
-    const endMs = startMs + spec.durationMinutes * 60_000;
-    return {
-      id: spec.id,
-      vehicleId: spec.vehicleId,
-      driverId: spec.driverId,
-      purpose: spec.purpose,
-      status: "done",
-      startedAt: new Date(startMs).toISOString(),
-      endedAt: new Date(endMs).toISOString(),
-      distanceKm: spec.distanceKm,
-      maxSpeedKmh: spec.maxSpeedKmh,
-      points: buildSeedTrackPoints(
-        spec.startIndex,
-        spec.endIndex,
-        startMs,
-        spec.durationMinutes,
-        spec.reverse
-      ),
-      safetyMetrics: {
-        harshBrakingCount: spec.harshBraking,
-        speedingIncidents: spec.speeding,
-        idleMinutes: spec.idleMinutes,
-        onTime: spec.onTime,
-      },
-    };
-  });
-}
-
-export function createSeedVehicles(): Vehicle[] {
-  return [
-    {
-      id: "veh-van-2045",
-      name: "Delivery Van",
-      plate: "DHA-11-2045",
-      type: "Van",
-      odometerKm: 48250,
-      createdAt: "2026-01-10T08:00:00.000Z",
-      vin: "JTFSX22P806041291",
-      make: "Toyota",
-      model: "HiAce Super GL",
-      year: 2023,
-      fuelType: "Diesel",
-      engineCapacityCc: 2755,
-      tankCapacityLiters: 65,
-      engineHours: 1420,
-      status: "available",
-      purchaseCost: 34000,
-      monthlyDepreciation: 320,
-    },
-    {
-      id: "veh-sedan-3390",
-      name: "Office Sedan",
-      plate: "DHA-12-3390",
-      type: "Sedan",
-      odometerKm: 29140,
-      createdAt: "2026-02-05T09:30:00.000Z",
-      vin: "JTDKN3DU701829402",
-      make: "Toyota",
-      model: "Corolla Axio Hybrid",
-      year: 2024,
-      fuelType: "Hybrid",
-      engineCapacityCc: 1496,
-      tankCapacityLiters: 42,
-      engineHours: 780,
-      status: "available",
-      purchaseCost: 24500,
-      monthlyDepreciation: 210,
-    },
-    {
-      id: "veh-pickup-7781",
-      name: "Pickup",
-      plate: "DHA-14-7781",
-      type: "Pickup",
-      odometerKm: 63890,
-      createdAt: "2026-03-14T11:15:00.000Z",
-      vin: "MROHA3CD402914588",
-      make: "Mitsubishi",
-      model: "L200 Triton 4WD",
-      year: 2022,
-      fuelType: "Diesel",
-      engineCapacityCc: 2442,
-      tankCapacityLiters: 75,
-      engineHours: 2150,
-      status: "under_maintenance",
-      purchaseCost: 38500,
-      monthlyDepreciation: 360,
-    },
-  ];
-}
-
-export function createSeedComplianceDocs(): ComplianceDocument[] {
-  return [
-    {
-      id: "comp-1",
-      vehicleId: "veh-van-2045",
-      docType: "insurance",
-      documentNumber: "INS-BD-2026-8841",
-      issuer: "Green Delta Insurance",
-      issueDate: daysFromNowIso(-350),
-      expiryDate: daysFromNowIso(6),
-      cost: 420,
-      notes: "Comprehensive commercial cargo coverage",
-    },
-    {
-      id: "comp-2",
-      vehicleId: "veh-van-2045",
-      docType: "fitness",
-      documentNumber: "FIT-BRTA-44021",
-      issuer: "BRTA Dhaka Metro",
-      issueDate: daysFromNowIso(-340),
-      expiryDate: daysFromNowIso(24),
-      cost: 110,
-    },
-    {
-      id: "comp-3",
-      vehicleId: "veh-sedan-3390",
-      docType: "registration",
-      documentNumber: "TAX-2026-3390",
-      issuer: "BRTA Tax Token",
-      issueDate: daysFromNowIso(-352),
-      expiryDate: daysFromNowIso(13),
-      cost: 180,
-    },
-    {
-      id: "comp-4",
-      vehicleId: "veh-pickup-7781",
-      docType: "route_permit",
-      documentNumber: "RP-DHK-7781-C",
-      issuer: "Metro Transport Authority",
-      issueDate: daysFromNowIso(-300),
-      expiryDate: daysFromNowIso(65),
-      cost: 150,
-    },
-  ];
-}
-
-export function createSeedDrivers(): Driver[] {
-  return [
-    {
-      id: "drv-rafiq",
-      name: "Rafiq Hasan",
-      phone: "+880 1711-234567",
-      licenseNumber: "DL-DHK-904821",
-      licenseClass: "Heavy Commercial (Class C)",
-      licenseExpiry: daysFromNowIso(240),
-      assignedVehicleId: "veh-van-2045",
-      assignedVehicleHistory: [
-        {
-          vehicleId: "veh-pickup-7781",
-          assignedAt: "2025-09-01",
-          unassignedAt: "2026-01-09",
-        },
-        {
-          vehicleId: "veh-van-2045",
-          assignedAt: "2026-01-10",
-        },
-      ],
-      shifts: [
-        { id: "sh-1", dayOfWeek: 0, startTime: "07:00", endTime: "18:00" },
-        { id: "sh-2", dayOfWeek: 1, startTime: "07:00", endTime: "18:00" },
-        { id: "sh-3", dayOfWeek: 2, startTime: "07:00", endTime: "18:00" },
-        { id: "sh-4", dayOfWeek: 3, startTime: "07:00", endTime: "18:00" },
-        { id: "sh-5", dayOfWeek: 4, startTime: "07:00", endTime: "18:00" },
-        { id: "sh-6", dayOfWeek: 6, startTime: "08:00", endTime: "16:00" },
-      ],
-      leaveLogs: [],
-    },
-    {
-      id: "drv-nadia",
-      name: "Nadia Karim",
-      phone: "+880 1819-876543",
-      licenseNumber: "DL-DHK-612304",
-      licenseClass: "Light Motor (Class B)",
-      licenseExpiry: daysFromNowIso(18),
-      assignedVehicleId: "veh-sedan-3390",
-      assignedVehicleHistory: [
-        {
-          vehicleId: "veh-sedan-3390",
-          assignedAt: "2026-02-05",
-        },
-      ],
-      shifts: [
-        { id: "sh-7", dayOfWeek: 0, startTime: "08:30", endTime: "19:30" },
-        { id: "sh-8", dayOfWeek: 1, startTime: "08:30", endTime: "19:30" },
-        { id: "sh-9", dayOfWeek: 2, startTime: "08:30", endTime: "19:30" },
-        { id: "sh-10", dayOfWeek: 3, startTime: "08:30", endTime: "19:30" },
-        { id: "sh-11", dayOfWeek: 4, startTime: "08:30", endTime: "19:30" },
-      ],
-      leaveLogs: [
-        {
-          id: "lv-1",
-          fromDate: daysFromNowIso(5),
-          toDate: daysFromNowIso(7),
-          reason: "Annual leave",
-        },
-      ],
-    },
-  ];
-}
-
-export function createSeedFuelLogs(): FuelLog[] {
-  return [
-    {
-      id: "fuel-1",
-      vehicleId: "veh-van-2045",
-      date: daysFromNowIso(-24),
-      liters: 42,
-      pricePerLiter: 1.25,
-      totalCost: 52.5,
-      odometerKm: 47210,
-      fullTank: true,
-      station: "Gulshan Ave Filling Station",
-    },
-    {
-      id: "fuel-2",
-      vehicleId: "veh-van-2045",
-      date: daysFromNowIso(-12),
-      liters: 44,
-      pricePerLiter: 1.28,
-      totalCost: 56.32,
-      odometerKm: 47740,
-      fullTank: true,
-      station: "Tejgaon Central Fuel Hub",
-    },
-    {
-      id: "fuel-3",
-      vehicleId: "veh-van-2045",
-      date: daysFromNowIso(-3),
-      liters: 40,
-      pricePerLiter: 1.3,
-      totalCost: 52.0,
-      odometerKm: 48250,
-      fullTank: true,
-      station: "Banani Express Station",
-    },
-  ];
-}
-
-export function createSeedExpenses(): OperatingExpense[] {
-  return [
-    {
-      id: "exp-1",
-      vehicleId: "veh-van-2045",
-      tripId: "trip-seed-1",
-      date: daysFromNowIso(-1),
-      category: "Tolls",
-      amount: 14.5,
-      costCenter: "Logistics-North",
-      description: "Elevated expressway & bridge toll pass",
-    },
-    {
-      id: "exp-2",
-      vehicleId: "veh-sedan-3390",
-      tripId: "trip-seed-2",
-      date: daysFromNowIso(-2),
-      category: "Parking",
-      amount: 8.0,
-      costCenter: "Executive-Ops",
-      description: "Airport terminal short-stay parking",
-    },
-    {
-      id: "exp-3",
-      vehicleId: "veh-pickup-7781",
-      date: daysFromNowIso(-4),
-      category: "Driver allowance",
-      amount: 25.0,
-      costCenter: "Field-Engineering",
-      description: "Late-shift loading crew meal allowance",
-    },
-  ];
-}
-
-export function createSeedMaintenance(): MaintenanceRecord[] {
-  return [
-    {
-      id: "maint-1",
-      vehicleId: "veh-van-2045",
-      title: "Engine oil and filter change",
-      type: "Oil change",
-      scheduledDate: daysFromNowIso(6),
-      dueOdometerKm: 48600,
-      dueEngineHours: 1450,
-      intervalKm: 5000,
-      intervalDays: 90,
-      intervalEngineHours: 250,
-      cost: 85,
-    },
-    {
-      id: "maint-2",
-      vehicleId: "veh-pickup-7781",
-      title: "Brake pad inspection",
-      type: "Brake inspection",
-      scheduledDate: daysFromNowIso(-3),
-      dueOdometerKm: 63800,
-      dueEngineHours: 2140,
-      intervalKm: 10000,
-      intervalDays: 180,
-      cost: 120,
-    },
-    {
-      id: "maint-3",
-      vehicleId: "veh-sedan-3390",
-      title: "Tire rotation and balance",
-      type: "Tire service",
-      scheduledDate: daysFromNowIso(45),
-      dueOdometerKm: 32000,
-      intervalKm: 8000,
-      intervalDays: 120,
-      cost: 60,
-    },
-  ];
-}
-
-export function createSeedWorkOrders(): WorkOrder[] {
-  return [
-    {
-      id: "wo-1",
-      vehicleId: "veh-pickup-7781",
-      title: "Front brake caliper & rotor replacement",
-      status: "in_progress",
-      priority: "high",
-      vendorName: "Dhaka Fleet Motors Garage",
-      mechanicPhone: "+880 1755-908112",
-      openedAt: daysFromNowIso(-2),
-      downtimeHours: 18,
-      warrantyUntil: daysFromNowIso(180),
-      parts: [
-        { id: "pt-1", name: "Ceramic Brake Pad Set", qty: 1, unitCost: 78 },
-        { id: "pt-2", name: "Ventilated Front Rotor", qty: 2, unitCost: 65 },
-      ],
-      laborCost: 90,
-      notes: "Test drive scheduled after bleed and torque check.",
-    },
-  ];
-}
-
-export function createSeedIncidents(): IncidentReport[] {
-  return [
-    {
-      id: "inc-1",
-      vehicleId: "veh-pickup-7781",
-      driverId: "drv-rafiq",
-      occurredAt: daysFromNowIso(-6),
-      severity: "minor",
-      status: "investigating",
-      locationLabel: "Tejgaon Industrial Link Rd",
-      lat: 23.7645,
-      lng: 90.4021,
-      description: "Rear bumper scuff while reversing into loading dock bay 3.",
-      thirdPartyName: "Warehouse Dock Barrier",
-      estimatedCost: 145,
-      photos: [],
-    },
-  ];
-}
-
-export function createSeedBookings(): TripBooking[] {
-  return [
-    {
-      id: "book-1",
-      requesterName: "Samira Chowdhury",
-      department: "Supply Chain",
-      purpose: "Gulshan cold-chain restock run",
-      requestedDate: daysFromNowIso(1),
-      estimatedKm: 24,
-      vehicleId: "veh-van-2045",
-      driverId: "drv-rafiq",
-      status: "pending",
-      notes: "Requires insulated cargo bay",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "book-2",
-      requesterName: "Arif Mahmud",
-      department: "Operations",
-      purpose: "Airport VIP client pickup",
-      requestedDate: daysFromNowIso(2),
-      estimatedKm: 32,
-      vehicleId: "veh-sedan-3390",
-      driverId: "drv-nadia",
-      status: "approved",
-      approvedBy: "Demo Admin",
-      createdAt: new Date().toISOString(),
-    },
-  ];
-}
-
-export function createSeedGeofences(): GeofenceZone[] {
-  return [
-    {
-      id: "geo-warehouse-gulshan",
-      name: "Gulshan Dispatch Hub",
-      type: "warehouse",
-      polygon: [
-        { lat: 23.7965, lng: 90.4045 },
-        { lat: 23.7965, lng: 90.4125 },
-        { lat: 23.7895, lng: 90.4125 },
-        { lat: 23.7895, lng: 90.4045 },
-      ],
-      active: true,
-      alertOnEntry: true,
-      alertOnExit: true,
-    },
-    {
-      id: "geo-client-banani",
-      name: "Banani Client Zone",
-      type: "client_site",
-      polygon: [
-        { lat: 23.7985, lng: 90.413 },
-        { lat: 23.7985, lng: 90.422 },
-        { lat: 23.7915, lng: 90.422 },
-        { lat: 23.7915, lng: 90.413 },
-      ],
-      active: true,
-      alertOnEntry: true,
-      alertOnExit: false,
-    },
-    {
-      id: "geo-restricted-hatirjheel",
-      name: "Hatirjheel After-Hours Restricted",
-      type: "restricted",
-      polygon: [
-        { lat: 23.7765, lng: 90.411 },
-        { lat: 23.7765, lng: 90.423 },
-        { lat: 23.7675, lng: 90.423 },
-        { lat: 23.7675, lng: 90.411 },
-      ],
-      active: true,
-      alertOnEntry: true,
-      alertOnExit: false,
-      afterHoursOnly: false,
-      allowedStartHour: 6,
-      allowedEndHour: 22,
-    },
-  ];
-}
-
-export function createSeedAuditLogs(): AuditLogEntry[] {
-  return [
-    {
-      id: "audit-seed-1",
-      timestamp: new Date(Date.now() - 3_600_000 * 6).toISOString(),
-      actorId: "user-demo-admin",
-      actorName: "Demo Admin",
-      actorRole: "super_admin",
-      action: "booking.approved",
-      entityType: "booking",
-      entityId: "book-2",
-      summary: "Approved booking 'Airport VIP client pickup' for Office Sedan",
-    },
-    {
-      id: "audit-seed-2",
-      timestamp: new Date(Date.now() - 3_600_000 * 14).toISOString(),
-      actorId: "user-mechanic",
-      actorName: "Kamrul Islam",
-      actorRole: "mechanic",
-      action: "work_order.opened",
-      entityType: "work_order",
-      entityId: "wo-1",
-      summary: "Opened work order 'Front brake caliper & rotor replacement' (Pickup)",
-    },
-  ];
-}
-
 export interface ActionResult {
   ok: boolean;
   error?: string;
@@ -831,6 +131,11 @@ export interface FleetDataSnapshot {
   bookings: TripBooking[];
   geofences: GeofenceZone[];
   geofenceAlerts: GeofenceAlert[];
+  vectorGeofences: VectorGeofence[];
+  alerts: FleetAlert[];
+  selectedVehicleId: string;
+  isSimulating: boolean;
+  simSpeedMultiplier: 1 | 2 | 4;
   expenses: OperatingExpense[];
   workOrders: WorkOrder[];
   incidents: IncidentReport[];
@@ -953,6 +258,25 @@ export interface FleetState extends FleetDataSnapshot {
   addDriverLeave: (driverId: string, leave: Omit<DriverLeave, "id">) => void;
   removeDriverLeave: (driverId: string, leaveId: string) => void;
 
+  // Live Tracking & Alerts
+  setSelectedVehicle: (vehicleId: string) => void;
+  setIsSimulating: (simulating: boolean) => void;
+  setSimSpeedMultiplier: (speed: 1 | 2 | 4) => void;
+  startTripForVehicle: (
+    vehicleId: string,
+    routeId?: string,
+    purpose?: string
+  ) => ActionResult;
+  endActiveTripForVehicle: (
+    vehicleId: string,
+    postTripChecklist?: TripChecklist
+  ) => void;
+  applySimulationTick: (updates: SimulationTickUpdate[]) => void;
+  toggleVectorGeofence: (id: string) => void;
+  addFleetAlert: (alert: Omit<FleetAlert, "id" | "read">) => void;
+  markAlertRead: (id: string) => void;
+  markAllAlertsRead: () => void;
+
   // Audit
   logAudit: (
     action: string,
@@ -988,17 +312,27 @@ export function migrateFleetState(
       bookings: [],
       geofences: createSeedGeofences(),
       geofenceAlerts: [],
+      vectorGeofences: createSeedVectorGeofences(),
+      alerts: createSeedAlerts(),
+      selectedVehicleId: "veh-1",
+      isSimulating: true,
+      simSpeedMultiplier: 1,
       expenses: [],
       workOrders: [],
       incidents: [],
       auditLogs: [],
     };
   }
+  if (version < 5) {
+    // Upgrade cleanly to Command Center rich pre-seeded dataset
+    return getInitialSnapshot();
+  }
   const hasTrips = Array.isArray(state.trips) && state.trips.length > 0;
+  const vehicles = Array.isArray(state.vehicles)
+    ? state.vehicles
+    : createSeedVehicles();
   return {
-    vehicles: Array.isArray(state.vehicles)
-      ? state.vehicles
-      : createSeedVehicles(),
+    vehicles,
     trips: hasTrips ? (state.trips as Trip[]) : createSeedTrips(),
     activeTripId:
       typeof state.activeTripId === "string" ? state.activeTripId : null,
@@ -1023,6 +357,20 @@ export function migrateFleetState(
     geofenceAlerts: Array.isArray(state.geofenceAlerts)
       ? state.geofenceAlerts
       : [],
+    vectorGeofences: Array.isArray(state.vectorGeofences)
+      ? state.vectorGeofences
+      : createSeedVectorGeofences(),
+    alerts: Array.isArray(state.alerts) ? state.alerts : createSeedAlerts(),
+    selectedVehicleId:
+      typeof state.selectedVehicleId === "string"
+        ? state.selectedVehicleId
+        : vehicles[0]?.id ?? "veh-1",
+    isSimulating:
+      typeof state.isSimulating === "boolean" ? state.isSimulating : true,
+    simSpeedMultiplier:
+      state.simSpeedMultiplier === 2 || state.simSpeedMultiplier === 4
+        ? state.simSpeedMultiplier
+        : 1,
     expenses: Array.isArray(state.expenses)
       ? state.expenses
       : createSeedExpenses(),
@@ -1039,10 +387,12 @@ export function migrateFleetState(
 }
 
 function getInitialSnapshot(): FleetDataSnapshot {
+  const trips = createSeedTrips();
+  const firstActive = trips.find((t) => t.status === "active");
   return {
     vehicles: createSeedVehicles(),
-    trips: createSeedTrips(),
-    activeTripId: null,
+    trips,
+    activeTripId: firstActive?.id ?? null,
     fuelLogs: createSeedFuelLogs(),
     maintenanceRecords: createSeedMaintenance(),
     drivers: createSeedDrivers(),
@@ -1050,6 +400,11 @@ function getInitialSnapshot(): FleetDataSnapshot {
     bookings: createSeedBookings(),
     geofences: createSeedGeofences(),
     geofenceAlerts: [],
+    vectorGeofences: createSeedVectorGeofences(),
+    alerts: createSeedAlerts(),
+    selectedVehicleId: "veh-1",
+    isSimulating: true,
+    simSpeedMultiplier: 1,
     expenses: createSeedExpenses(),
     workOrders: createSeedWorkOrders(),
     incidents: createSeedIncidents(),
@@ -1070,6 +425,9 @@ export const useFleetStore = create<FleetState>()(
       },
 
       addVehicle: (input) => {
+        const defaultRouteId = "route-1";
+        const route = getRouteById(defaultRouteId);
+        const initPos = interpolateRoutePosition(route.waypoints, 0.05);
         const vehicle: Vehicle = {
           id: `veh-${crypto.randomUUID()}`,
           name: input.name.trim(),
@@ -1088,6 +446,17 @@ export const useFleetStore = create<FleetState>()(
           status: input.status ?? "available",
           purchaseCost: input.purchaseCost,
           monthlyDepreciation: input.monthlyDepreciation,
+          routeId: defaultRouteId,
+          routeProgress: 0.05,
+          baseSpeedKmh: 62,
+          fuelLevelPercent: 85,
+          lastKnownLocation: {
+            latitude: initPos.latitude,
+            longitude: initPos.longitude,
+            speed: 0,
+            heading: initPos.headingDeg,
+            timestamp: Date.now(),
+          },
         };
         set((state) => ({
           vehicles: [vehicle, ...state.vehicles],
@@ -1254,24 +623,38 @@ export const useFleetStore = create<FleetState>()(
       },
 
       startTrip: (vehicleId, purpose, driverId, options) => {
-        const { activeTripId, trips, vehicles } = get();
-        const hasOpenTrip =
-          activeTripId !== null || trips.some((t) => t.status !== "done");
-        if (hasOpenTrip) {
-          return {
-            ok: false,
-            error: "Finish or end the current trip before starting another.",
-          };
-        }
+        const { trips, vehicles } = get();
         const vehicle = vehicles.find((v) => v.id === vehicleId);
         if (!vehicle) {
           return { ok: false, error: "Select a valid vehicle." };
         }
+        if (
+          vehicle.status === "under_maintenance" ||
+          vehicle.status === "out_of_service" ||
+          vehicle.status === "decommissioned"
+        ) {
+          return {
+            ok: false,
+            error: "Vehicle is unavailable for dispatch.",
+          };
+        }
+        const vehicleHasOpenTrip = trips.some(
+          (t) => t.vehicleId === vehicleId && t.status !== "done"
+        );
+        if (vehicleHasOpenTrip) {
+          return {
+            ok: false,
+            error: `${vehicle.name} already has an active trip.`,
+          };
+        }
+        const route = getRouteById(vehicle.routeId);
         const newTrip: Trip = {
           id: `trip-${crypto.randomUUID()}`,
           vehicleId,
           driverId: driverId || undefined,
           purpose: purpose.trim() || "General trip",
+          routeId: route.id,
+          routeName: route.name,
           status: "active",
           startedAt: new Date().toISOString(),
           distanceKm: 0,
@@ -1290,6 +673,7 @@ export const useFleetStore = create<FleetState>()(
         set((state) => ({
           trips: [newTrip, ...state.trips],
           activeTripId: newTrip.id,
+          selectedVehicleId: vehicleId,
           vehicles: state.vehicles.map((v) =>
             v.id === vehicleId ? { ...v, status: "on_trip" } : v
           ),
@@ -1989,6 +1373,277 @@ export const useFleetStore = create<FleetState>()(
         }));
       },
 
+      setSelectedVehicle: (vehicleId) => {
+        set({ selectedVehicleId: vehicleId });
+      },
+
+      setIsSimulating: (simulating) => {
+        set({ isSimulating: simulating });
+      },
+
+      setSimSpeedMultiplier: (speed) => {
+        set({ simSpeedMultiplier: speed });
+      },
+
+      startTripForVehicle: (vehicleId, routeId, purpose) => {
+        const { vehicles, drivers, trips } = get();
+        const vehicle = vehicles.find((v) => v.id === vehicleId);
+        if (!vehicle) {
+          return { ok: false, error: "Vehicle not found." };
+        }
+        if (
+          vehicle.status === "under_maintenance" ||
+          vehicle.status === "out_of_service" ||
+          vehicle.status === "decommissioned"
+        ) {
+          return {
+            ok: false,
+            error: "Vehicle is locked in maintenance or out of service.",
+          };
+        }
+        if (
+          vehicle.status === "on_trip" ||
+          trips.some((t) => t.vehicleId === vehicleId && t.status !== "done")
+        ) {
+          return {
+            ok: false,
+            error: `${vehicle.name} is already on an active trip.`,
+          };
+        }
+
+        const route = getRouteById(routeId ?? vehicle.routeId);
+        const assignedDriver = drivers.find(
+          (d) => d.assignedVehicleId === vehicleId
+        );
+        const startPos = interpolateRoutePosition(
+          route.waypoints,
+          vehicle.routeProgress ?? 0
+        );
+        const now = Date.now();
+        const newTrip: Trip = {
+          id: `trip-${crypto.randomUUID()}`,
+          vehicleId,
+          driverId: assignedDriver?.id,
+          purpose: purpose?.trim() || `Live corridor dispatch (${route.code})`,
+          routeId: route.id,
+          routeName: route.name,
+          status: "active",
+          startedAt: new Date(now).toISOString(),
+          distanceKm: 0,
+          maxSpeedKmh: vehicle.baseSpeedKmh ?? 64,
+          points: [
+            {
+              lat: startPos.latitude,
+              lng: startPos.longitude,
+              t: now,
+            },
+          ],
+          safetyMetrics: {
+            harshBrakingCount: 0,
+            speedingIncidents: 0,
+            idleMinutes: 0,
+            onTime: true,
+          },
+        };
+
+        set((state) => ({
+          trips: [newTrip, ...state.trips],
+          activeTripId: newTrip.id,
+          selectedVehicleId: vehicleId,
+          vehicles: state.vehicles.map((v) =>
+            v.id === vehicleId
+              ? {
+                  ...v,
+                  status: "on_trip",
+                  routeId: route.id,
+                  lastKnownLocation: {
+                    latitude: startPos.latitude,
+                    longitude: startPos.longitude,
+                    speed: v.baseSpeedKmh ?? 64,
+                    heading: startPos.headingDeg,
+                    timestamp: now,
+                  },
+                }
+              : v
+          ),
+          alerts: [
+            {
+              id: `alert-${crypto.randomUUID()}`,
+              severity: "info" as const,
+              title: "Trip Dispatched",
+              message: `${vehicle.name} (${vehicle.plate}) departed on ${route.name} (${route.code}).`,
+              vehicleId,
+              timestamp: now,
+              read: false,
+            },
+            ...state.alerts,
+          ].slice(0, 60),
+          auditLogs: [
+            makeAudit(
+              "trip.started",
+              "trip",
+              `Dispatched ${vehicle.name} on ${route.name} (${route.code})`,
+              newTrip.id
+            ),
+            ...state.auditLogs,
+          ].slice(0, 250),
+        }));
+
+        return { ok: true };
+      },
+
+      endActiveTripForVehicle: (vehicleId, postTripChecklist) => {
+        const { trips, vehicles } = get();
+        const activeTrip = trips.find(
+          (t) => t.vehicleId === vehicleId && t.status !== "done"
+        );
+        const vehicle = vehicles.find((v) => v.id === vehicleId);
+        const now = Date.now();
+        const endedAt = new Date(now).toISOString();
+
+        set((state) => {
+          const nextTrips = activeTrip
+            ? state.trips.map((t) =>
+                t.id === activeTrip.id
+                  ? {
+                      ...t,
+                      status: "done" as const,
+                      endedAt,
+                      postTripChecklist:
+                        postTripChecklist ?? t.postTripChecklist,
+                    }
+                  : t
+              )
+            : state.trips;
+
+          const remainingOpen = nextTrips.find((t) => t.status !== "done");
+
+          return {
+            trips: nextTrips,
+            activeTripId:
+              state.activeTripId === activeTrip?.id
+                ? remainingOpen?.id ?? null
+                : state.activeTripId,
+            vehicles: state.vehicles.map((v) =>
+              v.id === vehicleId
+                ? {
+                    ...v,
+                    status: v.status === "on_trip" ? "available" : v.status,
+                    lastKnownLocation: v.lastKnownLocation
+                      ? { ...v.lastKnownLocation, speed: 0, timestamp: now }
+                      : undefined,
+                  }
+                : v
+            ),
+            alerts: vehicle
+              ? [
+                  {
+                    id: `alert-${crypto.randomUUID()}`,
+                    severity: "info" as const,
+                    title: "Trip Completed",
+                    message: `${vehicle.name} (${vehicle.plate}) completed its corridor run and returned to standby.`,
+                    vehicleId,
+                    timestamp: now,
+                    read: false,
+                  },
+                  ...state.alerts,
+                ].slice(0, 60)
+              : state.alerts,
+            auditLogs: activeTrip
+              ? [
+                  makeAudit(
+                    "trip.completed",
+                    "trip",
+                    `Completed trip "${activeTrip.purpose}" (${activeTrip.distanceKm.toFixed(1)} km)`,
+                    activeTrip.id
+                  ),
+                  ...state.auditLogs,
+                ].slice(0, 250)
+              : state.auditLogs,
+          };
+        });
+      },
+
+      applySimulationTick: (updates) => {
+        if (updates.length === 0) return;
+        const byId = new Map(updates.map((u) => [u.vehicleId, u]));
+
+        set((state) => ({
+          vehicles: state.vehicles.map((v) => {
+            const u = byId.get(v.id);
+            if (!u || v.status !== "on_trip") return v;
+            const currentFuel = v.fuelLevelPercent ?? 75;
+            return {
+              ...v,
+              routeProgress: u.routeProgress,
+              odometerKm: Number((v.odometerKm + u.deltaDistanceKm).toFixed(2)),
+              fuelLevelPercent: Number(
+                Math.max(5, currentFuel - u.deltaFuelPercent).toFixed(1)
+              ),
+              lastKnownLocation: {
+                latitude: u.latitude,
+                longitude: u.longitude,
+                speed: u.speed,
+                heading: u.heading,
+                timestamp: u.timestamp,
+              },
+            };
+          }),
+          trips: state.trips.map((t) => {
+            if (t.status !== "active") return t;
+            const u = byId.get(t.vehicleId);
+            if (!u) return t;
+            const nextPt: TrackPoint = {
+              lat: u.latitude,
+              lng: u.longitude,
+              t: u.timestamp,
+            };
+            const nextPoints = [...t.points, nextPt].slice(-120);
+            return {
+              ...t,
+              distanceKm: Number((t.distanceKm + u.deltaDistanceKm).toFixed(2)),
+              maxSpeedKmh: Math.max(t.maxSpeedKmh, Number(u.speed.toFixed(1))),
+              points: nextPoints,
+            };
+          }),
+        }));
+      },
+
+      toggleVectorGeofence: (id) => {
+        set((state) => ({
+          vectorGeofences: state.vectorGeofences.map((g) =>
+            g.id === id ? { ...g, active: !g.active } : g
+          ),
+        }));
+      },
+
+      addFleetAlert: (alert) => {
+        set((state) => ({
+          alerts: [
+            {
+              ...alert,
+              id: `alert-${crypto.randomUUID()}`,
+              read: false,
+            },
+            ...state.alerts,
+          ].slice(0, 60),
+        }));
+      },
+
+      markAlertRead: (id) => {
+        set((state) => ({
+          alerts: state.alerts.map((a) =>
+            a.id === id ? { ...a, read: true } : a
+          ),
+        }));
+      },
+
+      markAllAlertsRead: () => {
+        set((state) => ({
+          alerts: state.alerts.map((a) => ({ ...a, read: true })),
+        }));
+      },
+
       importData: (payload) => {
         const openTrip = payload.trips.find((t) => t.status !== "done");
         set({
@@ -2002,6 +1657,9 @@ export const useFleetStore = create<FleetState>()(
           bookings: payload.bookings ?? [],
           geofences: payload.geofences ?? createSeedGeofences(),
           geofenceAlerts: payload.geofenceAlerts ?? [],
+          vectorGeofences: createSeedVectorGeofences(),
+          alerts: createSeedAlerts(),
+          selectedVehicleId: payload.vehicles[0]?.id ?? "veh-1",
           expenses: payload.expenses ?? [],
           workOrders: payload.workOrders ?? [],
           incidents: payload.incidents ?? [],
@@ -2015,7 +1673,7 @@ export const useFleetStore = create<FleetState>()(
     }),
     {
       name: "tf-fleet",
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => localStorage),
       migrate: (persistedState, version) =>
         migrateFleetState(persistedState, version),

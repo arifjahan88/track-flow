@@ -22,22 +22,60 @@ describe("fleet store rules", () => {
     useFleetStore.getState().resetDemoData();
   });
 
-  it("allows only one active or paused trip at a time", () => {
-    const vehicles = useFleetStore.getState().vehicles;
-    const first = useFleetStore
-      .getState()
-      .startTrip(vehicles[0].id, "Client delivery");
-    expect(first.ok).toBe(true);
+  it("supports multi-vehicle simultaneous tracking while blocking duplicate trips on the same vehicle", () => {
+    const { vehicles } = useFleetStore.getState();
+    const liveVehicles = vehicles.filter((v) => v.status === "on_trip");
+    expect(liveVehicles.length).toBeGreaterThanOrEqual(3);
 
-    const second = useFleetStore
+    // Already on_trip vehicle cannot start a duplicate trip
+    const dup = useFleetStore
       .getState()
-      .startTrip(vehicles[1].id, "Airport pickup");
-    expect(second.ok).toBe(false);
+      .startTrip(liveVehicles[0].id, "Duplicate dispatch");
+    expect(dup.ok).toBe(false);
+
+    // Standby vehicle can start a simultaneous trip
+    const standby = vehicles.find((v) => v.status === "available");
+    expect(standby).toBeDefined();
+    const started = useFleetStore
+      .getState()
+      .startTrip(standby!.id, "Simultaneous corridor run");
+    expect(started.ok).toBe(true);
+  });
+
+  it("applies live simulation ticks to odometer, fuel, and active trip trails", () => {
+    const vehicle = useFleetStore
+      .getState()
+      .vehicles.find((v) => v.status === "on_trip")!;
+    const startOdo = vehicle.odometerKm;
+    const startFuel = vehicle.fuelLevelPercent ?? 75;
+
+    useFleetStore.getState().applySimulationTick([
+      {
+        vehicleId: vehicle.id,
+        routeProgress: 0.25,
+        latitude: 37.781,
+        longitude: -122.421,
+        speed: 72.5,
+        heading: 84,
+        deltaDistanceKm: 1.4,
+        deltaFuelPercent: 0.5,
+        timestamp: 1_763_886_600_000,
+      },
+    ]);
+
+    const updated = useFleetStore
+      .getState()
+      .vehicles.find((v) => v.id === vehicle.id)!;
+    expect(updated.odometerKm).toBeGreaterThan(startOdo);
+    expect(updated.fuelLevelPercent!).toBeLessThan(startFuel);
+    expect(updated.routeProgress).toBe(0.25);
   });
 
   it("ignores points while paused and caps speed at 160 km/h", () => {
-    const vehicle = useFleetStore.getState().vehicles[0];
-    useFleetStore.getState().startTrip(vehicle.id, "Test route");
+    const standby = useFleetStore
+      .getState()
+      .vehicles.find((v) => v.status === "available")!;
+    useFleetStore.getState().startTrip(standby.id, "Test route");
 
     const t0 = 1_700_000_000_000;
     useFleetStore.getState().addPoint(23.7925, 90.4078, t0);
@@ -54,12 +92,14 @@ describe("fleet store rules", () => {
     expect(active.points).toHaveLength(2);
   });
 
-  it("blocks vehicle deletion during a trip and updates odometer on end", () => {
-    const vehicle = useFleetStore.getState().vehicles[0];
-    const startOdo = vehicle.odometerKm;
+  it("blocks vehicle deletion during a trip and allows deletion once ended", () => {
+    const standby = useFleetStore
+      .getState()
+      .vehicles.find((v) => v.status === "available")!;
+    const startOdo = standby.odometerKm;
 
-    useFleetStore.getState().startTrip(vehicle.id, "Odometer check");
-    const blocked = useFleetStore.getState().removeVehicle(vehicle.id);
+    useFleetStore.getState().startTrip(standby.id, "Odometer check");
+    const blocked = useFleetStore.getState().removeVehicle(standby.id);
     expect(blocked.ok).toBe(false);
 
     const t0 = 1_700_000_000_000;
@@ -69,15 +109,15 @@ describe("fleet store rules", () => {
 
     const updatedVehicle = useFleetStore
       .getState()
-      .vehicles.find((v) => v.id === vehicle.id);
+      .vehicles.find((v) => v.id === standby.id);
     expect(updatedVehicle).toBeDefined();
     expect(updatedVehicle!.odometerKm).toBeGreaterThan(startOdo);
 
-    const allowed = useFleetStore.getState().removeVehicle(vehicle.id);
+    const allowed = useFleetStore.getState().removeVehicle(standby.id);
     expect(allowed.ok).toBe(true);
   });
 
-  it("migrates v1 persisted fleet state to v2 cleanly", () => {
+  it("migrates v1 persisted fleet state cleanly", () => {
     const migrated = migrateFleetState(
       {
         vehicles: [],
@@ -91,13 +131,16 @@ describe("fleet store rules", () => {
     expect(migrated.drivers).toEqual([]);
   });
 
-  it("seeds completed demo trips across multiple dates with GPS track points", () => {
+  it("seeds both live ongoing trips and completed demo trips across multiple dates", () => {
     const { trips } = useFleetStore.getState();
-    expect(trips.length).toBeGreaterThanOrEqual(10);
-    const distinctDays = new Set(trips.map((t) => t.startedAt.slice(0, 10)));
+    const ongoing = trips.filter((t) => t.status === "active");
+    const done = trips.filter((t) => t.status === "done");
+    expect(ongoing.length).toBeGreaterThanOrEqual(3);
+    expect(done.length).toBeGreaterThanOrEqual(8);
+
+    const distinctDays = new Set(done.map((t) => t.startedAt.slice(0, 10)));
     expect(distinctDays.size).toBeGreaterThanOrEqual(7);
-    for (const trip of trips) {
-      expect(trip.status).toBe("done");
+    for (const trip of done) {
       expect(trip.points.length).toBeGreaterThan(20);
       expect(trip.distanceKm).toBeGreaterThan(5);
     }
