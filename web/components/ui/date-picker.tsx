@@ -77,20 +77,22 @@ export function DatePicker({
       </div>
 
       <PopoverContent align="start" className="w-auto p-2.5">
-        <Calendar
-          mode="single"
-          selected={selectedDate}
-          defaultMonth={selectedDate ?? new Date()}
-          onSelect={(date) => {
-            if (date) {
-              onChange(toIsoDate(date))
-              setOpen(false)
-            } else if (clearable) {
-              onChange("")
-              setOpen(false)
-            }
-          }}
-        />
+        {open ? (
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            defaultMonth={selectedDate}
+            onSelect={(date) => {
+              if (date) {
+                onChange(toIsoDate(date))
+                setOpen(false)
+              } else if (clearable) {
+                onChange("")
+                setOpen(false)
+              }
+            }}
+          />
+        ) : null}
       </PopoverContent>
     </Popover>
   )

@@ -132,16 +132,16 @@ export default function MaintenancePage() {
     useState<MaintenanceRecord | null>(null);
   const [completingRecord, setCompletingRecord] =
     useState<MaintenanceRecord | null>(null);
-  const [completeDate, setCompleteDate] = useState(() => toIsoDate());
+  const [completeDate, setCompleteDate] = useState("");
   const [completeCost, setCompleteCost] = useState("");
   const [scheduleNextPrompt, setScheduleNextPrompt] =
     useState<MaintenanceRecord | null>(null);
 
   const [form, setForm] = useState<MaintenanceFormState>({
-    vehicleId: vehicles[0]?.id ?? "",
+    vehicleId: "",
     title: "",
     type: "Oil change",
-    scheduledDate: offsetIsoDate(30),
+    scheduledDate: "",
     dueOdometerKm: "",
     cost: "",
   });
@@ -169,6 +169,7 @@ export default function MaintenancePage() {
   }, [vehicles]);
 
   const enriched = useMemo(() => {
+    if (!hydrated) return [];
     const order: Record<MaintenanceStatus, number> = {
       overdue: 0,
       due_soon: 1,
@@ -183,7 +184,7 @@ export default function MaintenancePage() {
         return { rec, vehicle, status };
       })
       .sort((a, b) => order[a.status] - order[b.status]);
-  }, [records, vehiclesById]);
+  }, [hydrated, records, vehiclesById]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

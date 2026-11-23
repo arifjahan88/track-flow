@@ -45,6 +45,15 @@ export function DateRangePicker({
   "aria-label": ariaLabel,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false)
+  const [isDesktop, setIsDesktop] = React.useState(true)
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)")
+    const update = () => setIsDesktop(mq.matches)
+    update()
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
+  }, [])
 
   const selectedRange = React.useMemo<DateRange | undefined>(() => {
     const from = parseIsoDate(fromDate)
@@ -166,18 +175,20 @@ export function DateRangePicker({
           </div>
         ) : null}
 
-        <Calendar
-          mode="range"
-          numberOfMonths={2}
-          selected={selectedRange}
-          defaultMonth={selectedRange?.from ?? new Date()}
-          onSelect={(range) => {
-            onChange({
-              fromDate: range?.from ? toIsoDate(range.from) : "",
-              toDate: range?.to ? toIsoDate(range.to) : "",
-            })
-          }}
-        />
+        {open ? (
+          <Calendar
+            mode="range"
+            numberOfMonths={isDesktop ? 2 : 1}
+            selected={selectedRange}
+            defaultMonth={selectedRange?.from}
+            onSelect={(range) => {
+              onChange({
+                fromDate: range?.from ? toIsoDate(range.from) : "",
+                toDate: range?.to ? toIsoDate(range.to) : "",
+              })
+            }}
+          />
+        ) : null}
       </PopoverContent>
     </Popover>
   )

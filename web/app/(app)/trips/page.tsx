@@ -135,7 +135,7 @@ export default function TripsPage() {
   const [selectedDriverId, setSelectedDriverId] = useState(NO_DRIVER_VALUE);
   const [purpose, setPurpose] = useState("Client delivery");
   const [simulateGps, setSimulateGps] = useState(true);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(0);
   const [selectedHistoryTrip, setSelectedHistoryTrip] = useState<Trip | null>(
     null
   );
@@ -171,10 +171,13 @@ export default function TripsPage() {
   // Live 1-second clock for active trip duration display
   useEffect(() => {
     if (!activeTrip) return;
-    const interval = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => window.clearInterval(interval);
+    const sync = () => setNowMs(Date.now());
+    const init = window.setTimeout(sync, 0);
+    const interval = window.setInterval(sync, 1000);
+    return () => {
+      window.clearTimeout(init);
+      window.clearInterval(interval);
+    };
   }, [activeTrip]);
 
   const vehiclesById = useMemo(
@@ -490,7 +493,7 @@ export default function TripsPage() {
       <div className="grid gap-6 xl:grid-cols-12">
         {/* Interactive Map Cockpit (8 cols on XL) */}
         <Card className="relative overflow-hidden rounded-2xl border-border p-0 shadow-lg xl:col-span-8">
-          <div className="relative h-[560px] w-full sm:h-[600px]">
+          <div className="relative h-[480px] w-full sm:h-[560px] lg:h-[600px]">
             <RouteMap
               points={activeTrip?.points ?? []}
               live={activeTrip?.status === "active"}
@@ -503,7 +506,7 @@ export default function TripsPage() {
             />
 
             {/* TOP-LEFT OVERLAY: Highway Turn-by-Turn Maneuver Sign */}
-            <div className="absolute top-3.5 left-3.5 z-20 max-w-[360px] sm:max-w-md">
+            <div className="absolute inset-x-3 top-3 z-20 sm:right-auto sm:top-3.5 sm:left-3.5 sm:max-w-md">
               <div className="overflow-hidden rounded-2xl border border-[#22d3ee]/40 bg-[#07131c]/92 text-[#e6f4fa] shadow-xl backdrop-blur-md">
                 <div className="flex items-center gap-3.5 px-4 py-3">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -1169,10 +1172,10 @@ export default function TripsPage() {
                 live={false}
                 showPlannedRoute={true}
                 activeWaypointIndex={ROUTE_WAYPOINTS.length}
-                className="min-h-[340px]"
+                className="min-h-[240px] sm:min-h-[340px]"
               />
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-border bg-muted/35 p-3">
                   <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Route className="h-3.5 w-3.5 text-primary" />

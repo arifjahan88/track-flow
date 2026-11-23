@@ -109,9 +109,14 @@ export default function FuelPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<FuelLog | null>(null);
   const [deletingLog, setDeletingLog] = useState<FuelLog | null>(null);
-  const [form, setForm] = useState<FuelFormState>(() =>
-    defaultFormState(vehicles[0]?.id ?? "", vehicles[0]?.odometerKm ?? 0)
-  );
+  const [form, setForm] = useState<FuelFormState>({
+    vehicleId: "",
+    date: "",
+    liters: "40",
+    pricePerLiter: "1.25",
+    odometerKm: "0",
+    fullTank: true,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const vehiclesById = useMemo(
@@ -312,7 +317,7 @@ export default function FuelPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
           <Select
             value={vehicleFilter}
             items={vehicleFilterItems}
@@ -325,7 +330,7 @@ export default function FuelPage() {
           >
             <SelectTrigger
               aria-label="Filter fuel logs by vehicle"
-              className="w-52"
+              className="w-full sm:w-52"
             >
               <SelectValue placeholder="All vehicles" />
             </SelectTrigger>
@@ -343,7 +348,7 @@ export default function FuelPage() {
             type="button"
             onClick={openAddDialog}
             disabled={vehicles.length === 0}
-            className="h-10 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
+            className="h-10 w-full rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90 sm:w-auto"
           >
             <Plus className="mr-2 h-4 w-4" />
             Log fuel

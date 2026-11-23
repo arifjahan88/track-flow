@@ -21,14 +21,14 @@ function Calendar({
         month: "flex flex-col gap-3",
         month_caption: "relative flex h-8 items-center justify-center px-8",
         caption_label: "text-sm font-semibold text-foreground",
-        nav: "absolute inset-x-0 top-0 flex h-8 items-center justify-between",
+        nav: "pointer-events-none absolute inset-x-0 top-0 z-10 flex h-8 items-center justify-between",
         button_previous: cn(
           buttonVariants({ variant: "outline", size: "icon-sm" }),
-          "size-7 rounded-lg bg-transparent p-0 opacity-75 hover:opacity-100"
+          "pointer-events-auto size-7 rounded-lg bg-transparent p-0 opacity-75 hover:opacity-100"
         ),
         button_next: cn(
           buttonVariants({ variant: "outline", size: "icon-sm" }),
-          "size-7 rounded-lg bg-transparent p-0 opacity-75 hover:opacity-100"
+          "pointer-events-auto size-7 rounded-lg bg-transparent p-0 opacity-75 hover:opacity-100"
         ),
         month_grid: "w-full border-collapse",
         weekdays: "flex",
@@ -36,29 +36,25 @@ function Calendar({
           "w-9 text-center text-[0.75rem] font-medium text-muted-foreground",
         week: "mt-1.5 flex w-full",
         day: cn(
-          "relative h-9 w-9 p-0 text-center text-sm focus-within:relative focus-within:z-20",
-          "[&:has([aria-selected])]:bg-primary/15",
-          "[&:has([aria-selected].day-range-end)]:rounded-r-lg",
-          "[&:has([aria-selected].day-range-start)]:rounded-l-lg",
-          "first:[&:has([aria-selected])]:rounded-l-lg last:[&:has([aria-selected])]:rounded-r-lg"
+          "relative h-9 w-9 p-0 text-center text-sm focus-within:relative focus-within:z-20"
         ),
         day_button: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-9 w-9 rounded-lg p-0 font-normal transition-colors aria-selected:opacity-100"
+          "h-9 w-9 rounded-lg p-0 font-normal text-foreground transition-colors"
         ),
-        range_start:
-          "day-range-start rounded-l-lg bg-primary/15 [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary [&>button]:hover:text-primary-foreground",
-        range_end:
-          "day-range-end rounded-r-lg bg-primary/15 [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary [&>button]:hover:text-primary-foreground",
         selected:
-          "[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary/90 [&>button]:hover:text-primary-foreground",
-        today:
-          "[&>button]:border [&>button]:border-primary/50 [&>button]:font-semibold",
-        outside:
-          "text-muted-foreground/50 aria-selected:bg-primary/10 aria-selected:text-muted-foreground",
-        disabled: "text-muted-foreground/40 opacity-50",
+          "[&>button]:bg-primary [&>button]:font-semibold [&>button]:text-primary-foreground [&>button]:hover:bg-primary/90 [&>button]:hover:text-primary-foreground",
+        range_start:
+          "rounded-l-lg bg-primary/15 dark:bg-primary/20 [&>button]:rounded-lg [&>button]:!bg-primary [&>button]:!font-semibold [&>button]:!text-primary-foreground [&>button]:hover:!bg-primary/90",
+        range_end:
+          "rounded-r-lg bg-primary/15 dark:bg-primary/20 [&>button]:rounded-lg [&>button]:!bg-primary [&>button]:!font-semibold [&>button]:!text-primary-foreground [&>button]:hover:!bg-primary/90",
         range_middle:
-          "rounded-none bg-primary/15 [&>button]:rounded-none [&>button]:bg-transparent [&>button]:text-foreground [&>button]:hover:bg-primary/25",
+          "rounded-none bg-primary/15 dark:bg-primary/20 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!font-medium [&>button]:!text-foreground [&>button]:hover:!bg-primary/25",
+        today:
+          "[&>button]:ring-1 [&>button]:ring-primary/70 [&>button]:ring-inset [&>button]:font-semibold",
+        outside:
+          "opacity-45 [&>button]:text-muted-foreground",
+        disabled: "opacity-35 pointer-events-none",
         hidden: "invisible",
         ...classNames,
       }}
