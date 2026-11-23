@@ -1,20 +1,18 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import {
-  Check,
   Download,
   History,
   Moon,
   RotateCcw,
-  Search,
   Shield,
   Sun,
   Upload,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { TablePagination, usePagination } from "@/components/table-pagination";
+import { AuditLogTab } from "@/components/settings/audit-log-tab";
+import { RbacTab } from "@/components/settings/rbac-tab";
 import { useThemeMode } from "@/components/theme-provider";
 import {
   AlertDialog,
@@ -35,54 +33,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { downloadTextFile } from "@/lib/csv";
-import { formatDateTime, toIsoDate } from "@/lib/format";
-import {
-  ALL_PERMISSIONS,
-  ALL_ROLES,
-  can,
-  ROLE_DESCRIPTIONS,
-  ROLE_LABELS,
-} from "@/lib/rbac";
+import { toIsoDate } from "@/lib/format";
+import { can, ROLE_LABELS } from "@/lib/rbac";
 import type { FleetExportPayload, UserRole } from "@/types";
-
-const ALL_ENTITIES = "__all_entities__";
-const ENTITY_FILTER_ITEMS: Record<string, string> = {
-  [ALL_ENTITIES]: "All modules",
-  vehicle: "Vehicles",
-  compliance: "Compliance",
-  driver: "Drivers",
-  booking: "Bookings",
-  trip: "Trips",
-  geofence: "Geofences",
-  fuel: "Fuel",
-  expense: "Expenses",
-  maintenance: "Maintenance",
-  work_order: "Work Orders",
-  incident: "Incidents",
-  rbac: "RBAC",
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -145,8 +104,10 @@ export default function SettingsPage() {
 
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const switchRole = useAuthStore((s) => s.switchRole);
-  const updateUserRole = useAuthStore((s) => s.updateUserRole);
+  const currentRole: UserRole =
+    users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
+  const canManageRbac = can(currentRole, "admin:rbac");
+  const canViewAudit = can(currentRole, "audit:view");
 
   const vehicles = useFleetStore((s) => s.vehicles);
   const trips = useFleetStore((s) => s.trips);
@@ -161,33 +122,8 @@ export default function SettingsPage() {
   const workOrders = useFleetStore((s) => s.workOrders);
   const incidents = useFleetStore((s) => s.incidents);
   const auditLogs = useFleetStore((s) => s.auditLogs);
-  const logAudit = useFleetStore((s) => s.logAudit);
   const importData = useFleetStore((s) => s.importData);
   const resetDemoData = useFleetStore((s) => s.resetDemoData);
-
-  const [auditSearch, setAuditSearch] = useState("");
-  const [auditEntity, setAuditEntity] = useState(ALL_ENTITIES);
-
-  const currentUser = users.find((u) => u.id === currentUserId);
-  const currentRole: UserRole = currentUser?.role ?? "super_admin";
-  const canManageRbac = can(currentRole, "admin:rbac");
-  const canViewAudit = can(currentRole, "audit:view");
-
-  const filteredAuditLogs = useMemo(() => {
-    const q = auditSearch.trim().toLowerCase();
-    return auditLogs.filter((entry) => {
-      if (auditEntity !== ALL_ENTITIES && entry.entityType !== auditEntity) {
-        return false;
-      }
-      if (q) {
-        const hay = `${entry.actorName} ${entry.action} ${entry.summary} ${entry.entityType}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [auditLogs, auditEntity, auditSearch]);
-
-  const auditPagination = usePagination(filteredAuditLogs, 10);
 
   if (!hydrated) {
     return (
@@ -217,9 +153,8 @@ export default function SettingsPage() {
       incidents,
       auditLogs,
     };
-    const today = toIsoDate();
     downloadTextFile(
-      `trackflow-backup-${today}.json`,
+      `trackflow-backup-${toIsoDate()}.json`,
       JSON.stringify(payload, null, 2),
       "application/json"
     );
@@ -230,25 +165,19 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-
     try {
-      const text = await file.text();
-      const parsed: unknown = JSON.parse(text);
+      const parsed: unknown = JSON.parse(await file.text());
       const validated = validateImportPayload(parsed);
-
       if (!validated) {
-        toast.error(
-          "Invalid backup file. Expected TrackFlow JSON with vehicles and trips."
-        );
+        toast.error("Invalid backup file.");
         return;
       }
-
       importData(validated);
       toast.success(
         `Imported ${validated.vehicles.length} vehicles and ${validated.trips.length} trips.`
       );
     } catch {
-      toast.error("Could not parse JSON file. Please select a valid backup.");
+      toast.error("Could not parse JSON file.");
     }
   };
 
@@ -294,292 +223,14 @@ export default function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* RBAC TAB */}
-        <TabsContent value="rbac" className="space-y-5">
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Role Switcher (Demo)</CardTitle>
-              <CardDescription>
-                Test Role-Based Access Control instantly by switching between the
-                5 fleet roles. Restricted actions update across the entire app.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {ALL_ROLES.map((role) => {
-                const active = currentRole === role;
-                return (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => {
-                      switchRole(role);
-                      toast.success(`Switched active role to ${ROLE_LABELS[role]}`);
-                    }}
-                    className={`rounded-xl border p-3 text-left transition-colors ${
-                      active
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-muted/20 hover:bg-muted/40"
-                    }`}
-                  >
-                    <p className="text-sm font-semibold text-foreground">
-                      {ROLE_LABELS[role]}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
-                      {ROLE_DESCRIPTIONS[role]}
-                    </p>
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Workspace Users &amp; Role Assignment</CardTitle>
-              <CardDescription>
-                {canManageRbac
-                  ? "Assign roles to team members. Every change is logged in the Audit Trail."
-                  : "Read-only view — Super Admin privileges are required to modify user roles."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell className="font-medium">
-                          {u.name}
-                          {u.id === currentUserId ? (
-                            <Badge variant="outline" className="ml-2 rounded-md text-[10px]">
-                              You
-                            </Badge>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {u.email}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={u.role}
-                            items={ROLE_LABELS}
-                            disabled={!canManageRbac}
-                            onValueChange={(nextRole) => {
-                              if (!nextRole) return;
-                              updateUserRole(u.id, nextRole as UserRole);
-                              logAudit(
-                                "rbac.role_updated",
-                                "rbac",
-                                `Changed ${u.name}'s role to ${ROLE_LABELS[nextRole as UserRole]}`,
-                                u.id
-                              );
-                              toast.success(
-                                `Updated ${u.name} to ${ROLE_LABELS[nextRole as UserRole]}.`
-                              );
-                            }}
-                          >
-                            <SelectTrigger className="w-44" size="sm">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {ALL_ROLES.map((r) => (
-                                <SelectItem key={r} value={r}>
-                                  {ROLE_LABELS[r]}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Permission Matrix</CardTitle>
-              <CardDescription>
-                Enforced capabilities across Super Admin, Fleet Manager,
-                Dispatcher, Mechanic, and Driver roles.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Capability</TableHead>
-                      {ALL_ROLES.map((r) => (
-                        <TableHead key={r} className="text-center">
-                          {ROLE_LABELS[r]}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ALL_PERMISSIONS.map((perm) => (
-                      <TableRow key={perm.key}>
-                        <TableCell className="font-medium">
-                          {perm.label}
-                        </TableCell>
-                        {ALL_ROLES.map((r) => {
-                          const allowed = can(r, perm.key);
-                          return (
-                            <TableCell key={r} className="text-center">
-                              {allowed ? (
-                                <Check className="mx-auto h-4 w-4 text-[var(--brand-teal)]" />
-                              ) : (
-                                <X className="mx-auto h-4 w-4 text-muted-foreground/40" />
-                              )}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="rbac">
+          <RbacTab currentRole={currentRole} canManageRbac={canManageRbac} />
         </TabsContent>
 
-        {/* AUDIT LOG TAB */}
         <TabsContent value="audit">
-          <Card className="rounded-2xl">
-            <CardHeader className="space-y-4">
-              <div>
-                <CardTitle className="text-lg">System Audit Log</CardTitle>
-                <CardDescription>
-                  Immutable record of vehicle updates, approvals, compliance
-                  changes, work orders, and RBAC edits.
-                </CardDescription>
-              </div>
-
-              {canViewAudit ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
-                  <div className="relative lg:col-span-7">
-                    <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="search"
-                      value={auditSearch}
-                      onChange={(e) => {
-                        setAuditSearch(e.target.value);
-                        auditPagination.setPage(1);
-                      }}
-                      placeholder="Search actor, action, or summary..."
-                      className="pl-10"
-                    />
-                  </div>
-                  <div className="lg:col-span-5">
-                    <Select
-                      value={auditEntity}
-                      items={ENTITY_FILTER_ITEMS}
-                      onValueChange={(val) => {
-                        if (val) {
-                          setAuditEntity(val);
-                          auditPagination.setPage(1);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All modules" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(ENTITY_FILTER_ITEMS).map(([k, label]) => (
-                          <SelectItem key={k} value={k}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {!canViewAudit ? (
-                <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center">
-                  <Shield className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-2 text-sm font-medium">
-                    Audit log access is restricted to Super Admins and Fleet
-                    Managers.
-                  </p>
-                </div>
-              ) : filteredAuditLogs.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No audit entries match your filter.
-                </p>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Timestamp</TableHead>
-                          <TableHead>Actor</TableHead>
-                          <TableHead>Module</TableHead>
-                          <TableHead>Action</TableHead>
-                          <TableHead>Summary</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {auditPagination.pageItems.map((entry) => (
-                          <TableRow key={entry.id}>
-                            <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                              {formatDateTime(entry.timestamp)}
-                            </TableCell>
-                            <TableCell>
-                              <p className="font-medium text-foreground">
-                                {entry.actorName}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                {ROLE_LABELS[entry.actorRole]}
-                              </p>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="rounded-md capitalize">
-                                {entry.entityType.replaceAll("_", " ")}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-mono text-xs text-muted-foreground">
-                              {entry.action}
-                            </TableCell>
-                            <TableCell className="max-w-md whitespace-normal text-sm">
-                              {entry.summary}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <TablePagination
-                    page={auditPagination.page}
-                    pageSize={auditPagination.pageSize}
-                    totalItems={auditPagination.totalItems}
-                    totalPages={auditPagination.totalPages}
-                    startIndex={auditPagination.startIndex}
-                    endIndex={auditPagination.endIndex}
-                    onPageChange={auditPagination.setPage}
-                    onPageSizeChange={auditPagination.setPageSize}
-                    itemLabel="audit entries"
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <AuditLogTab canViewAudit={canViewAudit} />
         </TabsContent>
 
-        {/* GENERAL & DATA TAB */}
         <TabsContent value="general" className="space-y-5">
           <Card className="rounded-2xl">
             <CardHeader>

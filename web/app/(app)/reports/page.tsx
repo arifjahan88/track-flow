@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { StaggerGrid, StaggerItem } from "@/components/motion";
+import { TcoAnalyticsTab } from "@/components/reports/tco-analytics-tab";
+import { UtilizationTab } from "@/components/reports/utilization-tab";
 import { TablePagination, usePagination } from "@/components/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,7 +55,6 @@ import { useHydrated } from "@/hooks/use-hydrated";
 import { computeUtilization, computeVehicleTco } from "@/lib/analytics";
 import { downloadTextFile, tripsToCsv } from "@/lib/csv";
 import {
-  formatCurrency,
   formatDateTime,
   formatDuration,
   formatKm,
@@ -66,18 +67,6 @@ const ALL_DRIVERS = "__all_drivers__";
 
 const distanceChartConfig: ChartConfig = {
   distanceKm: { label: "Distance (km)", color: "var(--brand-teal)" },
-};
-
-const tcoChartConfig: ChartConfig = {
-  fuelCost: { label: "Fuel", color: "var(--chart-1)" },
-  maintenanceCost: { label: "Maintenance", color: "var(--chart-2)" },
-  expenseCost: { label: "Expenses", color: "var(--chart-3)" },
-  insuranceCost: { label: "Insurance", color: "var(--chart-4)" },
-  depreciationCost: { label: "Depreciation", color: "var(--chart-5)" },
-};
-
-const peakChartConfig: ChartConfig = {
-  trips: { label: "Trips started", color: "var(--brand-blue)" },
 };
 
 export default function ReportsPage() {
@@ -243,11 +232,6 @@ export default function ReportsPage() {
     (max, t) => Math.max(max, t.maxSpeedKmh),
     0
   );
-
-  const fleetTcoTotal = tcoRows.reduce((s, r) => s + r.totalTco, 0);
-  const fleetTcoDistance = tcoRows.reduce((s, r) => s + r.distanceKm, 0);
-  const fleetCpk =
-    fleetTcoDistance > 0 ? fleetTcoTotal / fleetTcoDistance : null;
 
   const handleExportCsv = () => {
     if (filteredTrips.length === 0) {
@@ -583,250 +567,15 @@ export default function ReportsPage() {
           </Card>
         </TabsContent>
 
-        {/* TCO & CPK TAB */}
-        <TabsContent value="tco" className="space-y-5">
-          <StaggerGrid className="grid gap-4 sm:grid-cols-3">
-            <StaggerItem>
-              <Card className="h-full rounded-2xl">
-                <CardHeader className="pb-2">
-                  <CardDescription>Fleet Total Cost of Ownership</CardDescription>
-                  <CardTitle className="font-display text-2xl">
-                    {formatCurrency(fleetTcoTotal)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs text-muted-foreground">
-                  Fuel + Maintenance + Work Orders + Expenses + Insurance +
-                  Depreciation (3 mo)
-                </CardContent>
-              </Card>
-            </StaggerItem>
-            <StaggerItem>
-              <Card className="h-full rounded-2xl">
-                <CardHeader className="pb-2">
-                  <CardDescription>Fleet Cost per Kilometer (CPK)</CardDescription>
-                  <CardTitle className="font-display text-2xl text-primary">
-                    {fleetCpk !== null
-                      ? `${formatCurrency(fleetCpk)} / km`
-                      : "N/A"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs text-muted-foreground">
-                  Across {formatKm(fleetTcoDistance)} tracked km
-                </CardContent>
-              </Card>
-            </StaggerItem>
-            <StaggerItem>
-              <Card className="h-full rounded-2xl">
-                <CardHeader className="pb-2">
-                  <CardDescription>Vehicles Analyzed</CardDescription>
-                  <CardTitle className="font-display text-2xl">
-                    {tcoRows.length}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-            </StaggerItem>
-          </StaggerGrid>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Total Cost of Ownership by Vehicle
-              </CardTitle>
-              <CardDescription>
-                Stacked cost breakdown across fuel, maintenance/repairs,
-                operating expenses, insurance, and depreciation.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={tcoChartConfig} className="h-72 w-full">
-                <BarChart data={tcoRows} accessibilityLayer>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="vehicleName" tickLine={false} axisLine={false} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v}`}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="fuelCost" stackId="a" fill="var(--color-fuelCost)" />
-                  <Bar
-                    dataKey="maintenanceCost"
-                    stackId="a"
-                    fill="var(--color-maintenanceCost)"
-                  />
-                  <Bar
-                    dataKey="expenseCost"
-                    stackId="a"
-                    fill="var(--color-expenseCost)"
-                  />
-                  <Bar
-                    dataKey="insuranceCost"
-                    stackId="a"
-                    fill="var(--color-insuranceCost)"
-                  />
-                  <Bar
-                    dataKey="depreciationCost"
-                    stackId="a"
-                    fill="var(--color-depreciationCost)"
-                    radius={[6, 6, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Per-Vehicle CPK &amp; TCO Ledger</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead className="text-right">Fuel</TableHead>
-                      <TableHead className="text-right">Maint &amp; WO</TableHead>
-                      <TableHead className="text-right">Expenses</TableHead>
-                      <TableHead className="text-right">Insurance</TableHead>
-                      <TableHead className="text-right">Depr.</TableHead>
-                      <TableHead className="text-right">Total TCO</TableHead>
-                      <TableHead className="text-right">CPK</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tcoRows.map((row) => (
-                      <TableRow key={row.vehicleId}>
-                        <TableCell>
-                          <p className="font-medium">{row.vehicleName}</p>
-                          <p className="font-mono text-xs text-muted-foreground">
-                            {row.plate}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(row.fuelCost)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(row.maintenanceCost)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(row.expenseCost)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(row.insuranceCost)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(row.depreciationCost)}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatCurrency(row.totalTco)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge className="rounded-lg border-primary/30 bg-primary/15 text-primary">
-                            {row.cpk !== null
-                              ? `${formatCurrency(row.cpk)}/km`
-                              : "—"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="tco">
+          <TcoAnalyticsTab tcoRows={tcoRows} />
         </TabsContent>
 
-        {/* UTILIZATION & PEAK DEMAND TAB */}
-        <TabsContent value="utilization" className="space-y-5">
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Peak Demand Hours (24h)</CardTitle>
-              <CardDescription>
-                Completed trip dispatches grouped by start hour to optimize
-                driver shifts and fleet sizing.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={peakChartConfig} className="h-64 w-full">
-                <BarChart data={utilization.peakHours} accessibilityLayer>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar
-                    dataKey="trips"
-                    fill="var(--color-trips)"
-                    radius={[6, 6, 0, 0]}
-                  />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Fleet Asset Utilization (30-day window)
-              </CardTitle>
-              <CardDescription>
-                Identifies underused assets so you can rebalance routes or
-                right-size the fleet.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead className="text-right">Trips</TableHead>
-                      <TableHead className="text-right">Active days</TableHead>
-                      <TableHead className="text-right">Distance</TableHead>
-                      <TableHead className="text-right">Utilization</TableHead>
-                      <TableHead>Assessment</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {utilization.byVehicle.map((row) => (
-                      <TableRow key={row.vehicleId}>
-                        <TableCell>
-                          <p className="font-medium">{row.vehicleName}</p>
-                          <p className="font-mono text-xs text-muted-foreground">
-                            {row.plate}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {row.tripCount}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {row.activeDays} / 30d
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatKm(row.totalDistanceKm)} km
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold">
-                          {row.utilizationPct}%
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={row.underused ? "outline" : "secondary"}
-                            className={
-                              row.underused
-                                ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
-                                : "border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]"
-                            }
-                          >
-                            {row.underused ? "Underused" : "Healthy"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="utilization">
+          <UtilizationTab
+            byVehicle={utilization.byVehicle}
+            peakHours={utilization.peakHours}
+          />
         </TabsContent>
       </Tabs>
     </div>

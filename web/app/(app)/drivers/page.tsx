@@ -3,7 +3,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
   CalendarClock,
-  History,
   Pencil,
   Phone,
   Plus,
@@ -12,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DriverScheduleDialog } from "@/components/drivers/driver-schedule-dialog";
 import { StaggerGrid, StaggerItem } from "@/components/motion";
 import {
   AlertDialog,
@@ -33,7 +33,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
-import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +50,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
@@ -59,7 +57,6 @@ import {
   checkDriverAvailability,
   computeDriverSafetyScore,
   computeDriverStats,
-  DAY_OF_WEEK_LABELS,
   getLicenseStatus,
 } from "@/lib/drivers";
 import { formatKm, formatShortDate, offsetIsoDate, toIsoDate } from "@/lib/format";
@@ -75,9 +72,6 @@ const LICENSE_CLASSES = [
 ] as const;
 const LICENSE_CLASS_ITEMS: Record<string, string> = Object.fromEntries(
   LICENSE_CLASSES.map((c) => [c, c])
-);
-const DAY_ITEMS: Record<string, string> = Object.fromEntries(
-  DAY_OF_WEEK_LABELS.map((label, idx) => [String(idx), label])
 );
 
 interface DriverFormState {
@@ -104,22 +98,11 @@ export default function DriversPage() {
   const addDriver = useFleetStore((s) => s.addDriver);
   const updateDriver = useFleetStore((s) => s.updateDriver);
   const removeDriver = useFleetStore((s) => s.removeDriver);
-  const addDriverShift = useFleetStore((s) => s.addDriverShift);
-  const removeDriverShift = useFleetStore((s) => s.removeDriverShift);
-  const addDriverLeave = useFleetStore((s) => s.addDriverLeave);
-  const removeDriverLeave = useFleetStore((s) => s.removeDriverLeave);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [deletingDriver, setDeletingDriver] = useState<Driver | null>(null);
   const [scheduleDriverId, setScheduleDriverId] = useState<string | null>(null);
-
-  const [shiftDay, setShiftDay] = useState("1");
-  const [shiftStart, setShiftStart] = useState("08:00");
-  const [shiftEnd, setShiftEnd] = useState("17:00");
-  const [leaveFrom, setLeaveFrom] = useState("");
-  const [leaveTo, setLeaveTo] = useState("");
-  const [leaveReason, setLeaveReason] = useState("");
 
   const [form, setForm] = useState<DriverFormState>({
     name: "",
@@ -238,34 +221,6 @@ export default function DriversPage() {
     removeDriver(deletingDriver.id);
     toast.success(`Removed driver ${deletingDriver.name}.`);
     setDeletingDriver(null);
-  };
-
-  const handleAddShift = (e: FormEvent) => {
-    e.preventDefault();
-    if (!scheduleDriver) return;
-    addDriverShift(scheduleDriver.id, {
-      dayOfWeek: Number(shiftDay),
-      startTime: shiftStart,
-      endTime: shiftEnd,
-    });
-    toast.success("Shift added.");
-  };
-
-  const handleAddLeave = (e: FormEvent) => {
-    e.preventDefault();
-    if (!scheduleDriver || !leaveFrom || !leaveTo) {
-      toast.error("Select a leave date range.");
-      return;
-    }
-    addDriverLeave(scheduleDriver.id, {
-      fromDate: leaveFrom,
-      toDate: leaveTo,
-      reason: leaveReason.trim() || "Scheduled leave",
-    });
-    setLeaveFrom("");
-    setLeaveTo("");
-    setLeaveReason("");
-    toast.success("Leave logged — driver will be blocked from double-booking.");
   };
 
   return (
@@ -503,215 +458,12 @@ export default function DriversPage() {
         </StaggerGrid>
       )}
 
-      {/* Shifts, Leave & Vehicle Assignment History Dialog */}
-      <Dialog
-        open={scheduleDriver !== null}
-        onOpenChange={(open) => {
-          if (!open) setScheduleDriverId(null);
-        }}
-      >
-        <DialogContent className="rounded-2xl sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{scheduleDriver?.name} — Schedule &amp; History</DialogTitle>
-            <DialogDescription>
-              Manage weekly shifts, leave logs (prevents double-booking), and
-              assigned vehicle history.
-            </DialogDescription>
-          </DialogHeader>
-
-          {scheduleDriver ? (
-            <Tabs defaultValue="shifts" className="mt-1">
-              <TabsList className="grid w-full grid-cols-3 rounded-xl">
-                <TabsTrigger value="shifts" className="rounded-lg">
-                  Shifts ({scheduleDriver.shifts?.length ?? 0})
-                </TabsTrigger>
-                <TabsTrigger value="leave" className="rounded-lg">
-                  Leave ({scheduleDriver.leaveLogs?.length ?? 0})
-                </TabsTrigger>
-                <TabsTrigger value="history" className="rounded-lg">
-                  <History className="mr-1 h-3.5 w-3.5" />
-                  Vehicles ({scheduleDriver.assignedVehicleHistory?.length ?? 0})
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="shifts" className="mt-4 space-y-4">
-                {canEditDrivers ? (
-                  <form
-                    onSubmit={handleAddShift}
-                    className="grid gap-2.5 sm:grid-cols-4"
-                  >
-                    <Select
-                      value={shiftDay}
-                      items={DAY_ITEMS}
-                      onValueChange={(v) => {
-                        if (v) setShiftDay(v);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DAY_OF_WEEK_LABELS.map((d, idx) => (
-                          <SelectItem key={d} value={String(idx)}>
-                            {d}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="time"
-                      value={shiftStart}
-                      onChange={(e) => setShiftStart(e.target.value)}
-                    />
-                    <Input
-                      type="time"
-                      value={shiftEnd}
-                      onChange={(e) => setShiftEnd(e.target.value)}
-                    />
-                    <Button type="submit" className="h-10 rounded-xl">
-                      Add shift
-                    </Button>
-                  </form>
-                ) : null}
-
-                <div className="max-h-56 divide-y divide-border overflow-y-auto rounded-xl border border-border">
-                  {(scheduleDriver.shifts ?? []).length === 0 ? (
-                    <p className="p-4 text-center text-xs text-muted-foreground">
-                      No shifts configured (driver available any day).
-                    </p>
-                  ) : (
-                    (scheduleDriver.shifts ?? []).map((sh) => (
-                      <div
-                        key={sh.id}
-                        className="flex items-center justify-between px-3 py-2 text-sm"
-                      >
-                        <span>
-                          <strong>{DAY_OF_WEEK_LABELS[sh.dayOfWeek]}</strong> ·{" "}
-                          {sh.startTime} – {sh.endTime}
-                        </span>
-                        {canEditDrivers ? (
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={() =>
-                              removeDriverShift(scheduleDriver.id, sh.id)
-                            }
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="leave" className="mt-4 space-y-4">
-                {canEditDrivers ? (
-                  <form onSubmit={handleAddLeave} className="space-y-2.5">
-                    <DateRangePicker
-                      fromDate={leaveFrom}
-                      toDate={leaveTo}
-                      presets={false}
-                      onChange={({ fromDate, toDate }) => {
-                        setLeaveFrom(fromDate);
-                        setLeaveTo(toDate);
-                      }}
-                      placeholder="Select leave dates"
-                    />
-                    <div className="flex gap-2">
-                      <Input
-                        value={leaveReason}
-                        onChange={(e) => setLeaveReason(e.target.value)}
-                        placeholder="Leave reason (Annual, Medical...)"
-                      />
-                      <Button type="submit" className="h-10 shrink-0 rounded-xl">
-                        Log leave
-                      </Button>
-                    </div>
-                  </form>
-                ) : null}
-
-                <div className="max-h-52 divide-y divide-border overflow-y-auto rounded-xl border border-border">
-                  {(scheduleDriver.leaveLogs ?? []).length === 0 ? (
-                    <p className="p-4 text-center text-xs text-muted-foreground">
-                      No leave periods logged.
-                    </p>
-                  ) : (
-                    (scheduleDriver.leaveLogs ?? []).map((lv) => (
-                      <div
-                        key={lv.id}
-                        className="flex items-center justify-between px-3 py-2 text-sm"
-                      >
-                        <div>
-                          <p className="font-medium">{lv.reason}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatShortDate(lv.fromDate)} –{" "}
-                            {formatShortDate(lv.toDate)}
-                          </p>
-                        </div>
-                        {canEditDrivers ? (
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={() =>
-                              removeDriverLeave(scheduleDriver.id, lv.id)
-                            }
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-4">
-                <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-xl border border-border">
-                  {(scheduleDriver.assignedVehicleHistory ?? []).length ===
-                  0 ? (
-                    <p className="p-4 text-center text-xs text-muted-foreground">
-                      No vehicle assignment history recorded yet.
-                    </p>
-                  ) : (
-                    (scheduleDriver.assignedVehicleHistory ?? []).map(
-                      (item, idx) => {
-                        const veh = vehiclesById.get(item.vehicleId);
-                        return (
-                          <div
-                            key={`${item.vehicleId}-${idx}`}
-                            className="flex items-center justify-between px-3 py-2.5 text-sm"
-                          >
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {veh ? `${veh.name} (${veh.plate})` : item.vehicleId}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Assigned {formatShortDate(item.assignedAt)}
-                                {item.unassignedAt
-                                  ? ` → Ended ${formatShortDate(item.unassignedAt)}`
-                                  : " → Current"}
-                              </p>
-                            </div>
-                            {!item.unassignedAt ? (
-                              <Badge variant="secondary">Current</Badge>
-                            ) : null}
-                          </div>
-                        );
-                      }
-                    )
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <DriverScheduleDialog
+        driver={scheduleDriver}
+        vehiclesById={vehiclesById}
+        canEdit={canEditDrivers}
+        onClose={() => setScheduleDriverId(null)}
+      />
 
       {/* Add / Edit Driver Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
