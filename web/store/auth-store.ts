@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { User } from "@/types";
+import type { User, UserRole } from "@/types";
 import { DEMO_PASSWORD_HASH, sha256 } from "@/lib/hash";
 
 const DEMO_USER_ID = "user-demo-admin";
@@ -13,7 +13,40 @@ const SEED_USERS: User[] = [
     name: "Demo Admin",
     email: "demo@demo.com",
     passwordHash: DEMO_PASSWORD_HASH,
+    role: "super_admin",
     createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "user-fleet-manager",
+    name: "Farhana Rahman",
+    email: "manager@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "fleet_manager",
+    createdAt: "2026-01-05T00:00:00.000Z",
+  },
+  {
+    id: "user-dispatcher",
+    name: "Tariq Ahmed",
+    email: "dispatch@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "dispatcher",
+    createdAt: "2026-01-10T00:00:00.000Z",
+  },
+  {
+    id: "user-mechanic",
+    name: "Kamrul Islam",
+    email: "mechanic@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "mechanic",
+    createdAt: "2026-01-12T00:00:00.000Z",
+  },
+  {
+    id: "user-driver",
+    name: "Rafiq Hasan",
+    email: "driver@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "driver",
+    createdAt: "2026-01-15T00:00:00.000Z",
   },
 ];
 
@@ -26,10 +59,34 @@ interface AuthState {
   register: (
     name: string,
     email: string,
-    password: string
+    password: string,
+    role?: UserRole
   ) => Promise<string | null>;
   loginAsDemo: () => void;
+  switchRole: (role: UserRole) => void;
+  updateUserRole: (userId: string, role: UserRole) => void;
   logout: () => void;
+}
+
+function normalizeUsers(rawUsers: unknown): User[] {
+  if (!Array.isArray(rawUsers) || rawUsers.length === 0) {
+    return SEED_USERS;
+  }
+  const normalized = (rawUsers as Partial<User>[]).map((u) => ({
+    id: u.id ?? `user-${crypto.randomUUID()}`,
+    name: u.name ?? "User",
+    email: u.email ?? "user@demo.com",
+    passwordHash: u.passwordHash ?? DEMO_PASSWORD_HASH,
+    role: (u.role ?? "super_admin") as UserRole,
+    createdAt: u.createdAt ?? "2026-01-01T00:00:00.000Z",
+  }));
+
+  for (const seed of SEED_USERS) {
+    if (!normalized.some((u) => u.email === seed.email)) {
+      normalized.push(seed);
+    }
+  }
+  return normalized;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -57,7 +114,7 @@ export const useAuthStore = create<AuthState>()(
         return null;
       },
 
-      register: async (name, email, password) => {
+      register: async (name, email, password, role = "fleet_manager") => {
         const trimmedName = name.trim();
         const normalizedEmail = email.trim().toLowerCase();
 
@@ -83,6 +140,7 @@ export const useAuthStore = create<AuthState>()(
           name: trimmedName,
           email: normalizedEmail,
           passwordHash,
+          role,
           createdAt: new Date().toISOString(),
         };
 
@@ -99,10 +157,25 @@ export const useAuthStore = create<AuthState>()(
           set({ currentUserId: demo.id });
         } else {
           set((state) => ({
-            users: [...SEED_USERS, ...state.users],
+            users: normalizeUsers(state.users),
             currentUserId: DEMO_USER_ID,
           }));
         }
+      },
+
+      switchRole: (role) => {
+        const target = get().users.find((u) => u.role === role);
+        if (target) {
+          set({ currentUserId: target.id });
+        }
+      },
+
+      updateUserRole: (userId, role) => {
+        set((state) => ({
+          users: state.users.map((u) =>
+            u.id === userId ? { ...u, role } : u
+          ),
+        }));
       },
 
       logout: () => {
@@ -111,8 +184,18 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "tf-auth",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Partial<AuthState>;
+        return {
+          users: normalizeUsers(state.users),
+          currentUserId:
+            typeof state.currentUserId === "string"
+              ? state.currentUserId
+              : null,
+        };
+      },
     }
   )
 );

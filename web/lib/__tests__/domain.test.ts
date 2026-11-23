@@ -7,12 +7,35 @@ import {
   ROUTE_WAYPOINTS,
   SIM_ROUTE,
 } from "@/lib/geo";
-import { computeFuelEfficiency, getAverageEfficiency } from "@/lib/fuel";
+import {
+  computeFuelEfficiency,
+  detectFuelAnomalies,
+  getAverageEfficiency,
+  kmPerLiterToMpg,
+} from "@/lib/fuel";
 import { getMaintenanceStatus } from "@/lib/maintenance";
-import { getLicenseStatus } from "@/lib/drivers";
+import {
+  checkDriverAvailability,
+  computeDriverSafetyScore,
+  getLicenseStatus,
+} from "@/lib/drivers";
+import { getComplianceStatus } from "@/lib/compliance";
+import {
+  evaluateGeofenceTransitions,
+  isPointInPolygon,
+} from "@/lib/geofence";
+import { computeUtilization, computeVehicleTco } from "@/lib/analytics";
+import { can } from "@/lib/rbac";
 import { formatShortDate, parseIsoDate, toIsoDate } from "@/lib/format";
 import { paginateItems } from "@/components/table-pagination";
-import type { FuelLog, MaintenanceRecord } from "@/types";
+import type {
+  Driver,
+  FuelLog,
+  GeofenceZone,
+  MaintenanceRecord,
+  Trip,
+  Vehicle,
+} from "@/types";
 
 describe("geo utilities", () => {
   it("computes a known short Dhaka distance accurately", () => {
@@ -197,5 +220,164 @@ describe("dayjs date formatting & table pagination helpers", () => {
     expect(empty.totalPages).toBe(1);
     expect(empty.startIndex).toBe(0);
     expect(empty.endIndex).toBe(0);
+  });
+});
+
+describe("enterprise fleet domain engines (7 modules)", () => {
+  it("enforces RBAC permissions across all 5 roles", () => {
+    expect(can("super_admin", "admin:rbac")).toBe(true);
+    expect(can("fleet_manager", "admin:rbac")).toBe(false);
+    expect(can("fleet_manager", "audit:view")).toBe(true);
+    expect(can("dispatcher", "dispatch:approve")).toBe(true);
+    expect(can("mechanic", "work_orders:write")).toBe(true);
+    expect(can("driver", "vehicles:write")).toBe(false);
+    expect(can("driver", "trips:operate")).toBe(true);
+  });
+
+  it("classifies compliance expiry into 30/15/7-day and expired tiers", () => {
+    const ref = new Date("2026-06-01T00:00:00.000Z").getTime();
+    expect(getComplianceStatus("2026-05-25", ref).level).toBe("expired");
+    expect(getComplianceStatus("2026-06-05", ref).level).toBe("critical_7d");
+    expect(getComplianceStatus("2026-06-12", ref).level).toBe("warning_15d");
+    expect(getComplianceStatus("2026-06-25", ref).level).toBe("notice_30d");
+    expect(getComplianceStatus("2026-09-01", ref).level).toBe("valid");
+  });
+
+  it("computes driver safety scores and blocks leave/double-booking conflicts", () => {
+    const driver: Driver = {
+      id: "d1",
+      name: "Test Driver",
+      phone: "123",
+      licenseNumber: "DL-1",
+      licenseExpiry: "2027-01-01",
+      leaveLogs: [
+        { id: "l1", fromDate: "2026-06-10", toDate: "2026-06-12", reason: "Annual" },
+      ],
+    };
+    const trips: Trip[] = [
+      {
+        id: "t1",
+        vehicleId: "v1",
+        driverId: "d1",
+        purpose: "Delivery",
+        status: "done",
+        startedAt: "2026-06-01T08:00:00Z",
+        endedAt: "2026-06-01T09:00:00Z",
+        distanceKm: 20,
+        maxSpeedKmh: 55,
+        points: [],
+        safetyMetrics: {
+          harshBrakingCount: 1,
+          speedingIncidents: 1,
+          idleMinutes: 15,
+          onTime: true,
+        },
+      },
+    ];
+
+    const safety = computeDriverSafetyScore("d1", trips);
+    expect(safety.score).toBe(88);
+    expect(safety.grade).toBe("Good");
+
+    expect(checkDriverAvailability(driver, "2026-06-11", trips).available).toBe(
+      false
+    );
+    expect(checkDriverAvailability(driver, "2026-06-15", trips).available).toBe(
+      true
+    );
+  });
+
+  it("detects polygon geofence entry, exit, and after-hours movement", () => {
+    const zone: GeofenceZone = {
+      id: "z1",
+      name: "Depot",
+      type: "restricted",
+      polygon: [
+        { lat: 23.8, lng: 90.4 },
+        { lat: 23.8, lng: 90.42 },
+        { lat: 23.78, lng: 90.42 },
+        { lat: 23.78, lng: 90.4 },
+      ],
+      active: true,
+      alertOnEntry: true,
+      alertOnExit: true,
+      afterHoursOnly: true,
+      allowedStartHour: 6,
+      allowedEndHour: 22,
+    };
+
+    const outside = { lat: 23.75, lng: 90.39 };
+    const inside = { lat: 23.79, lng: 90.41 };
+    expect(isPointInPolygon(inside, zone.polygon)).toBe(true);
+    expect(isPointInPolygon(outside, zone.polygon)).toBe(false);
+
+    const events = evaluateGeofenceTransitions(outside, inside, [zone], 23);
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe("after_hours");
+  });
+
+  it("detects fuel over-capacity & efficiency-drop anomalies and converts MPG", () => {
+    const vehicle: Vehicle = {
+      id: "v1",
+      name: "Van",
+      plate: "P1",
+      type: "Van",
+      odometerKm: 2000,
+      tankCapacityLiters: 50,
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    const logs: FuelLog[] = [
+      { id: "f1", vehicleId: "v1", date: "2026-05-01", liters: 40, pricePerLiter: 1, totalCost: 40, odometerKm: 1000, fullTank: true },
+      { id: "f2", vehicleId: "v1", date: "2026-05-10", liters: 40, pricePerLiter: 1, totalCost: 40, odometerKm: 1600, fullTank: true },
+      { id: "f3", vehicleId: "v1", date: "2026-05-20", liters: 60, pricePerLiter: 1, totalCost: 60, odometerKm: 1850, fullTank: true },
+    ];
+    const anomalies = detectFuelAnomalies(logs, new Map([["v1", vehicle]]));
+    expect(anomalies.get("f3")?.some((a) => a.type === "over_capacity")).toBe(true);
+    expect(anomalies.get("f3")?.some((a) => a.type === "efficiency_drop")).toBe(true);
+    expect(kmPerLiterToMpg(10)).toBeCloseTo(23.52, 1);
+  });
+
+  it("computes vehicle TCO, CPK, and utilization peak demand hours", () => {
+    const vehicles: Vehicle[] = [
+      {
+        id: "v1",
+        name: "Van",
+        plate: "P1",
+        type: "Van",
+        odometerKm: 5000,
+        monthlyDepreciation: 100,
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+    ];
+    const trips: Trip[] = [
+      {
+        id: "t1",
+        vehicleId: "v1",
+        purpose: "Run",
+        status: "done",
+        startedAt: "2026-05-10T09:00:00.000Z",
+        endedAt: "2026-05-10T10:00:00.000Z",
+        distanceKm: 100,
+        maxSpeedKmh: 60,
+        points: [],
+      },
+    ];
+    const tco = computeVehicleTco(
+      vehicles,
+      trips,
+      [{ id: "f1", vehicleId: "v1", date: "2026-05-10", liters: 10, pricePerLiter: 2, totalCost: 20, odometerKm: 5000, fullTank: true }],
+      [{ id: "m1", vehicleId: "v1", title: "Oil", type: "Oil change", cost: 80 }],
+      [],
+      [{ id: "e1", vehicleId: "v1", date: "2026-05-10", category: "Tolls", amount: 10, description: "Toll" }],
+      [{ id: "c1", vehicleId: "v1", docType: "insurance", documentNumber: "I1", issuer: "X", issueDate: "2026-01-01", expiryDate: "2027-01-01", cost: 90 }],
+      3
+    );
+    // 20 + 80 + 10 + 90 + 300 = 500 -> 500 / 100 km = 5.00 CPK
+    expect(tco[0].totalTco).toBe(500);
+    expect(tco[0].cpk).toBe(5);
+
+    const util = computeUtilization(vehicles, trips, 30);
+    expect(util.byVehicle[0].tripCount).toBe(1);
+    expect(util.peakHours.reduce((s, b) => s + b.trips, 0)).toBe(1);
   });
 });

@@ -8,12 +8,14 @@ export type MaintenanceStatus =
 
 const DUE_SOON_DAYS = 14;
 const DUE_SOON_KM = 500;
+const DUE_SOON_ENGINE_HOURS = 25;
 const MS_PER_DAY = 86_400_000;
 
 export function getMaintenanceStatus(
   record: MaintenanceRecord,
   vehicleOdometerKm: number,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  vehicleEngineHours?: number
 ): MaintenanceStatus {
   if (record.completedDate) {
     return "completed";
@@ -39,6 +41,18 @@ export function getMaintenanceStatus(
     if (kmRemaining <= 0) {
       isOverdue = true;
     } else if (kmRemaining <= DUE_SOON_KM) {
+      isDueSoon = true;
+    }
+  }
+
+  if (
+    typeof record.dueEngineHours === "number" &&
+    typeof vehicleEngineHours === "number"
+  ) {
+    const hoursRemaining = record.dueEngineHours - vehicleEngineHours;
+    if (hoursRemaining <= 0) {
+      isOverdue = true;
+    } else if (hoursRemaining <= DUE_SOON_ENGINE_HOURS) {
       isDueSoon = true;
     }
   }

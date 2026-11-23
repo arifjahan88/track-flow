@@ -6,6 +6,8 @@ import {
   ArrowRight,
   Car,
   CheckCircle2,
+  ClipboardCheck,
+  FileWarning,
   Navigation,
   Route,
   Wrench,
@@ -25,8 +27,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { COMPLIANCE_DOC_LABELS, getComplianceStatus } from "@/lib/compliance";
 import { formatDuration, formatKm, formatShortDate } from "@/lib/format";
 import { getMaintenanceStatus } from "@/lib/maintenance";
+import { ROLE_LABELS } from "@/lib/rbac";
 
 export default function DashboardPage() {
   const hydrated = useHydrated();
@@ -37,6 +41,9 @@ export default function DashboardPage() {
   const trips = useFleetStore((s) => s.trips);
   const activeTripId = useFleetStore((s) => s.activeTripId);
   const maintenanceRecords = useFleetStore((s) => s.maintenanceRecords);
+  const complianceDocs = useFleetStore((s) => s.complianceDocs);
+  const bookings = useFleetStore((s) => s.bookings);
+  const workOrders = useFleetStore((s) => s.workOrders);
 
   if (!hydrated) {
     return (
@@ -73,18 +80,40 @@ export default function DashboardPage() {
   const maintenanceAlerts = maintenanceRecords
     .map((record) => {
       const vehicle = vehiclesById.get(record.vehicleId);
-      const status = getMaintenanceStatus(record, vehicle?.odometerKm ?? 0);
+      const status = getMaintenanceStatus(
+        record,
+        vehicle?.odometerKm ?? 0,
+        undefined,
+        vehicle?.engineHours
+      );
       return { record, vehicle, status };
     })
     .filter((item) => item.status === "overdue" || item.status === "due_soon")
     .sort((a, b) => (a.status === "overdue" ? -1 : b.status === "overdue" ? 1 : 0));
+
+  const complianceAlerts = complianceDocs
+    .map((doc) => ({
+      doc,
+      vehicle: vehiclesById.get(doc.vehicleId),
+      status: getComplianceStatus(doc.expiryDate),
+    }))
+    .filter((item) => item.status.level !== "valid")
+    .sort((a, b) => a.status.daysRemaining - b.status.daysRemaining);
+
+  const pendingBookingsCount = bookings.filter(
+    (b) => b.status === "pending"
+  ).length;
+  const openWorkOrdersCount = workOrders.filter(
+    (w) => w.status !== "completed"
+  ).length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">
-            Fleet overview
+            Fleet overview ·{" "}
+            {currentUser?.role ? ROLE_LABELS[currentUser.role] : "Super Admin"}
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Welcome back, {firstName}
@@ -362,6 +391,93 @@ export default function DashboardPage() {
                 </Link>
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Compliance & Operations Pulse Row */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="rounded-2xl">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-base">Compliance Vault Alerts</CardTitle>
+              <CardDescription>
+                Documents expiring within 30 / 15 / 7 days
+              </CardDescription>
+            </div>
+            <FileWarning className="h-4 w-4 text-[var(--brand-amber)]" />
+          </CardHeader>
+          <CardContent>
+            {complianceAlerts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                All tax tokens, fitness certificates, permits, and insurance
+                policies are current.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {complianceAlerts.slice(0, 4).map(({ doc, vehicle, status }) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/25 px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">
+                        {vehicle?.name ?? "Vehicle"} ·{" "}
+                        {COMPLIANCE_DOC_LABELS[doc.docType]}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Exp {formatShortDate(doc.expiryDate)}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={
+                        status.level === "expired" ||
+                        status.level === "critical_7d"
+                          ? "destructive"
+                          : "secondary"
+                      }
+                    >
+                      {status.label}
+                    </Badge>
+                  </div>
+                ))}
+                <Link href="/vehicles" className="block pt-1">
+                  <Button variant="outline" size="sm" className="w-full rounded-xl">
+                    Open compliance vault
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-base">Operations Queue</CardTitle>
+              <CardDescription>
+                Pending dispatch approvals and active shop repairs
+              </CardDescription>
+            </div>
+            <ClipboardCheck className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/25 px-3.5 py-2.5 text-sm">
+              <span>Pending trip bookings</span>
+              <Link href="/trips">
+                <Badge variant="secondary" className="rounded-lg">
+                  {pendingBookingsCount} pending
+                </Badge>
+              </Link>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/25 px-3.5 py-2.5 text-sm">
+              <span>Active maintenance work orders</span>
+              <Link href="/maintenance">
+                <Badge variant="secondary" className="rounded-lg">
+                  {openWorkOrdersCount} open
+                </Badge>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

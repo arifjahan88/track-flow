@@ -1,26 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowUp,
+  BatteryCharging,
+  CalendarClock,
   CheckCircle2,
-  Clock,
+  ClipboardCheck,
   Compass,
   CornerUpLeft,
   CornerUpRight,
+  Cpu,
   Flag,
-  Gauge,
+  Fuel,
   GitMerge,
   MapPin,
   Navigation,
   Pause,
   Play,
+  Plus,
+  Power,
+  Radar,
   Radio,
   RotateCcw,
   Route,
   Search,
   Square,
+  Thermometer,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,7 +35,14 @@ import {
   getActiveWaypointTelemetry,
   RouteMap,
 } from "@/components/route-map";
+import { RoutePlayback } from "@/components/route-playback";
 import { TablePagination, usePagination } from "@/components/table-pagination";
+import {
+  BookingsPanel,
+  GeofencesPanel,
+  TripChecklistDialog,
+  WaypointPodDialog,
+} from "@/components/trip-operations-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,14 +79,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useTripTracker } from "@/hooks/use-trip-tracker";
+import { checkDriverAvailability } from "@/lib/drivers";
 import {
   formatDateTime,
   formatDuration,
   formatKm,
   formatSpeed,
+  toIsoDate,
 } from "@/lib/format";
 import {
   computeBearingDegrees,
@@ -83,7 +100,7 @@ import {
   SIM_ROUTE,
   type RouteWaypoint,
 } from "@/lib/geo";
-import type { Trip } from "@/types";
+import type { Trip, TripBooking, TripChecklist, TripWaypoint } from "@/types";
 
 const NO_DRIVER_VALUE = "__none__";
 const ALL_VEHICLES = "__all__";
@@ -124,12 +141,17 @@ export default function TripsPage() {
   const vehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
   const trips = useFleetStore((s) => s.trips);
+  const bookings = useFleetStore((s) => s.bookings);
+  const geofences = useFleetStore((s) => s.geofences);
+  const geofenceAlerts = useFleetStore((s) => s.geofenceAlerts);
   const activeTripId = useFleetStore((s) => s.activeTripId);
 
   const startTrip = useFleetStore((s) => s.startTrip);
   const pauseTrip = useFleetStore((s) => s.pauseTrip);
   const resumeTrip = useFleetStore((s) => s.resumeTrip);
   const endTrip = useFleetStore((s) => s.endTrip);
+  const addActiveTripWaypoint = useFleetStore((s) => s.addActiveTripWaypoint);
+  const completeWaypointPod = useFleetStore((s) => s.completeWaypointPod);
 
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [selectedDriverId, setSelectedDriverId] = useState(NO_DRIVER_VALUE);
@@ -139,6 +161,15 @@ export default function TripsPage() {
   const [selectedHistoryTrip, setSelectedHistoryTrip] = useState<Trip | null>(
     null
   );
+  const [checklistPhase, setChecklistPhase] = useState<"pre" | "post" | null>(
+    null
+  );
+  const [pendingBookingId, setPendingBookingId] = useState<string | undefined>(
+    undefined
+  );
+  const [newStopLabel, setNewStopLabel] = useState("");
+  const [podWaypoint, setPodWaypoint] = useState<TripWaypoint | null>(null);
+  const lastAlertIdRef = useRef<string | null>(null);
   const [historySearch, setHistorySearch] = useState("");
   const [historyVehicleFilter, setHistoryVehicleFilter] = useState(ALL_VEHICLES);
   const [historyDriverFilter, setHistoryDriverFilter] = useState(ALL_DRIVERS);
@@ -167,6 +198,18 @@ export default function TripsPage() {
     source: simulateGps ? "simulate" : "gps",
     onAutoComplete: handleAutoComplete,
   });
+
+  // Notify live when a new geofence alert fires
+  useEffect(() => {
+    const latest = geofenceAlerts[0];
+    if (!latest) return;
+    if (lastAlertIdRef.current && lastAlertIdRef.current !== latest.id) {
+      toast.warning(
+        `Geofence alert: ${latest.eventType.replaceAll("_", " ")} "${latest.zoneName}"`
+      );
+    }
+    lastAlertIdRef.current = latest.id;
+  }, [geofenceAlerts]);
 
   // Live 1-second clock for active trip duration display
   useEffect(() => {
@@ -403,16 +446,74 @@ export default function TripsPage() {
       toast.error("Add a vehicle before starting navigation.");
       return;
     }
-    const driverId =
-      selectedDriverId === NO_DRIVER_VALUE ? undefined : selectedDriverId;
-    const res = startTrip(effectiveVehicleId, purpose, driverId);
-    if (!res.ok) {
-      toast.error(res.error ?? "Unable to start trip.");
+    if (selectedDriverId !== NO_DRIVER_VALUE) {
+      const drv = driversById.get(selectedDriverId);
+      if (drv) {
+        const avail = checkDriverAvailability(drv, toIsoDate(), trips);
+        if (!avail.available) {
+          toast.error(`Driver shift/leave conflict: ${avail.reason}`);
+          return;
+        }
+      }
+    }
+    setPendingBookingId(undefined);
+    setChecklistPhase("pre");
+  };
+
+  const handleDispatchBooking = (booking: TripBooking) => {
+    if (activeTrip) {
+      toast.error("Finish the active trip before dispatching a new booking.");
       return;
     }
-    setNowMs(Date.now());
-    const vehicle = vehiclesById.get(effectiveVehicleId);
-    toast.success(`Live navigation started for ${vehicle?.name ?? "vehicle"}.`);
+    if (booking.vehicleId) setSelectedVehicleId(booking.vehicleId);
+    setSelectedDriverId(booking.driverId ?? NO_DRIVER_VALUE);
+    setPurpose(booking.purpose);
+    setPendingBookingId(booking.id);
+    setChecklistPhase("pre");
+  };
+
+  const handleChecklistConfirm = (checklist: TripChecklist) => {
+    setChecklistPhase(null);
+    if (checklist.phase === "pre") {
+      const driverId =
+        selectedDriverId === NO_DRIVER_VALUE ? undefined : selectedDriverId;
+      const res = startTrip(effectiveVehicleId, purpose, driverId, {
+        bookingId: pendingBookingId,
+        preTripChecklist: checklist,
+        waypoints: [
+          {
+            id: `wp-init-1`,
+            label: ROUTE_WAYPOINTS[3].name,
+            address: ROUTE_WAYPOINTS[3].corridor,
+            lat: ROUTE_WAYPOINTS[3].lat,
+            lng: ROUTE_WAYPOINTS[3].lng,
+          },
+          {
+            id: `wp-init-2`,
+            label: ROUTE_WAYPOINTS[ROUTE_WAYPOINTS.length - 1].name,
+            address: ROUTE_WAYPOINTS[ROUTE_WAYPOINTS.length - 1].corridor,
+            lat: ROUTE_WAYPOINTS[ROUTE_WAYPOINTS.length - 1].lat,
+            lng: ROUTE_WAYPOINTS[ROUTE_WAYPOINTS.length - 1].lng,
+          },
+        ],
+      });
+      if (!res.ok) {
+        toast.error(res.error ?? "Unable to start trip.");
+        return;
+      }
+      setNowMs(Date.now());
+      setPendingBookingId(undefined);
+      const vehicle = vehiclesById.get(effectiveVehicleId);
+      toast.success(
+        `Pre-trip inspection passed. Live navigation started for ${vehicle?.name ?? "vehicle"}.`
+      );
+    } else {
+      const distance = activeTrip?.distanceKm ?? 0;
+      endTrip(checklist);
+      toast.success(
+        `Post-trip inspection saved. Added ${formatKm(distance)} km to odometer.`
+      );
+    }
   };
 
   const handlePause = () => {
@@ -426,12 +527,30 @@ export default function TripsPage() {
   };
 
   const handleEnd = () => {
-    const distance = activeTrip?.distanceKm ?? 0;
-    endTrip();
-    toast.success(
-      `Navigation ended. Added ${formatKm(distance)} km to the vehicle odometer.`
-    );
+    setChecklistPhase("post");
   };
+
+  const handleAddStop = () => {
+    if (!newStopLabel.trim()) return;
+    const refWp = ROUTE_WAYPOINTS[navTelemetry.nextWaypointIndex] ?? ROUTE_WAYPOINTS[0];
+    addActiveTripWaypoint({
+      label: newStopLabel.trim(),
+      address: `${refWp.district}, Dhaka`,
+      lat: refWp.lat,
+      lng: refWp.lng,
+    });
+    setNewStopLabel("");
+    toast.success("Waypoint added to active trip.");
+  };
+
+  // Simulated OBD-II diagnostics derived deterministically from live state
+  const obdIgnitionOn = activeTrip?.status === "active";
+  const obdBatteryVolts = obdIgnitionOn ? "14.1V" : "12.6V";
+  const obdFuelPct = Math.max(
+    18,
+    Math.round(86 - (activeTrip?.distanceKm ?? 0) * 1.4)
+  );
+  const obdCoolantC = obdIgnitionOn ? 88 : 42;
 
   return (
     <div className="space-y-6">
@@ -502,6 +621,7 @@ export default function TripsPage() {
                 activeTrip ? navTelemetry.nextWaypointIndex : 0
               }
               headingDeg={liveHeadingDeg}
+              geofences={geofences}
               className="h-full w-full rounded-none border-0"
             />
 
@@ -643,6 +763,57 @@ export default function TripsPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* OBD-II & Live Vehicle Diagnostics Strip */}
+          <div className="grid grid-cols-2 gap-2 border-t border-border bg-card px-4 py-3 text-xs sm:grid-cols-5">
+            <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-2.5 py-2">
+              <Power
+                className={`h-3.5 w-3.5 ${obdIgnitionOn ? "text-[var(--brand-teal)]" : "text-muted-foreground"}`}
+              />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Ignition</p>
+                <p className="font-mono font-semibold text-foreground">
+                  {obdIgnitionOn ? "ON" : "OFF"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-2.5 py-2">
+              <BatteryCharging className="h-3.5 w-3.5 text-[var(--brand-teal)]" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Battery</p>
+                <p className="font-mono font-semibold text-foreground">
+                  {obdBatteryVolts}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-2.5 py-2">
+              <Fuel className="h-3.5 w-3.5 text-[var(--brand-blue)]" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Fuel Level</p>
+                <p className="font-mono font-semibold text-foreground">
+                  {obdFuelPct}%
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-2.5 py-2">
+              <Thermometer className="h-3.5 w-3.5 text-[var(--brand-amber)]" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Coolant</p>
+                <p className="font-mono font-semibold text-foreground">
+                  {obdCoolantC}°C
+                </p>
+              </div>
+            </div>
+            <div className="col-span-2 flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-2.5 py-2 sm:col-span-1">
+              <Cpu className="h-3.5 w-3.5 text-[var(--brand-teal)]" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">OBD-II</p>
+                <p className="font-mono font-semibold text-[var(--brand-teal)]">
+                  0 DTC · OK
+                </p>
               </div>
             </div>
           </div>
@@ -880,6 +1051,72 @@ export default function TripsPage() {
                   </div>
                 </div>
 
+                {/* Multi-stop Waypoints & Proof of Delivery (POD) */}
+                <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Stops &amp; POD ({activeTrip.waypoints?.length ?? 0})
+                    </p>
+                    <Badge variant="outline" className="rounded-md text-[10px]">
+                      <ClipboardCheck className="mr-1 h-3 w-3 text-primary" />
+                      Pre-trip OK
+                    </Badge>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={newStopLabel}
+                      onChange={(e) => setNewStopLabel(e.target.value)}
+                      placeholder="Add delivery stop..."
+                      className="h-8 text-xs"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleAddStop}
+                      className="h-8 rounded-lg px-2.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {(activeTrip.waypoints ?? []).length > 0 ? (
+                    <div className="max-h-36 space-y-1.5 overflow-y-auto">
+                      {(activeTrip.waypoints ?? []).map((wp) => (
+                        <div
+                          key={wp.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-card px-2.5 py-1.5 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">
+                              {wp.label}
+                            </p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {wp.recipientName
+                                ? `POD: ${wp.recipientName}`
+                                : wp.address}
+                            </p>
+                          </div>
+                          {wp.arrivedAt ? (
+                            <Badge className="shrink-0 rounded-md border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[10px] text-[var(--brand-teal)]">
+                              Delivered
+                            </Badge>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              onClick={() => setPodWaypoint(wp)}
+                              className="shrink-0 rounded-md"
+                            >
+                              Capture POD
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 {/* Solid Action Controls */}
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
                   {activeTrip.status === "active" ? (
@@ -919,8 +1156,25 @@ export default function TripsPage() {
         </Card>
       </div>
 
-      {/* Trip History Table */}
-      <Card className="rounded-2xl">
+      {/* Bottom Operations Tabs: Trip History, Bookings & Approvals, Geofences */}
+      <Tabs defaultValue="history" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3 rounded-xl sm:max-w-xl">
+          <TabsTrigger value="history" className="rounded-lg">
+            <Route className="mr-1.5 h-3.5 w-3.5" />
+            Trip History ({filteredCompletedTrips.length})
+          </TabsTrigger>
+          <TabsTrigger value="bookings" className="rounded-lg">
+            <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
+            Bookings ({bookings.length})
+          </TabsTrigger>
+          <TabsTrigger value="geofences" className="rounded-lg">
+            <Radar className="mr-1.5 h-3.5 w-3.5" />
+            Geofences ({geofences.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="history">
+          <Card className="rounded-2xl">
         <CardHeader className="space-y-4">
           <div>
             <CardTitle className="text-lg">
@@ -1144,8 +1398,40 @@ export default function TripsPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
 
-      {/* Trip Route Replay Modal */}
+        <TabsContent value="bookings">
+          <BookingsPanel onDispatchBooking={handleDispatchBooking} />
+        </TabsContent>
+
+        <TabsContent value="geofences">
+          <GeofencesPanel />
+        </TabsContent>
+      </Tabs>
+
+      {/* Pre-Trip / Post-Trip Walkaround Checklist Dialog */}
+      <TripChecklistDialog
+        open={checklistPhase !== null}
+        phase={checklistPhase ?? "pre"}
+        onOpenChange={(open) => {
+          if (!open) setChecklistPhase(null);
+        }}
+        onConfirm={handleChecklistConfirm}
+      />
+
+      {/* Proof of Delivery (POD) Dialog */}
+      <WaypointPodDialog
+        waypoint={podWaypoint}
+        onOpenChange={(open) => {
+          if (!open) setPodWaypoint(null);
+        }}
+        onSavePod={(waypointId, pod) => {
+          completeWaypointPod(waypointId, pod);
+          toast.success("Proof of Delivery signature & arrival recorded.");
+        }}
+      />
+
+      {/* Interactive Trip Route Playback Modal */}
       <Dialog
         open={selectedHistoryTrip !== null}
         onOpenChange={(open) => {
@@ -1167,51 +1453,11 @@ export default function TripsPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <RouteMap
-                points={selectedHistoryTrip.points}
-                live={false}
-                showPlannedRoute={true}
-                activeWaypointIndex={ROUTE_WAYPOINTS.length}
-                className="min-h-[240px] sm:min-h-[340px]"
+              <RoutePlayback
+                key={selectedHistoryTrip.id}
+                trip={selectedHistoryTrip}
+                geofences={geofences}
               />
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-border bg-muted/35 p-3">
-                  <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Route className="h-3.5 w-3.5 text-primary" />
-                    Distance
-                  </p>
-                  <p className="mt-1 font-display text-lg font-semibold">
-                    {formatKm(selectedHistoryTrip.distanceKm)} km
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/35 p-3">
-                  <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5 text-[var(--brand-blue)]" />
-                    Duration
-                  </p>
-                  <p className="mt-1 font-display text-lg font-semibold">
-                    {formatDuration(
-                      selectedHistoryTrip.endedAt
-                        ? Math.max(
-                            0,
-                            new Date(selectedHistoryTrip.endedAt).getTime() -
-                              new Date(selectedHistoryTrip.startedAt).getTime()
-                          )
-                        : 0
-                    )}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/35 p-3">
-                  <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Gauge className="h-3.5 w-3.5 text-[var(--brand-amber)]" />
-                    Top speed
-                  </p>
-                  <p className="mt-1 font-display text-lg font-semibold">
-                    {formatSpeed(selectedHistoryTrip.maxSpeedKmh)} km/h
-                  </p>
-                </div>
-              </div>
             </>
           ) : null}
         </DialogContent>

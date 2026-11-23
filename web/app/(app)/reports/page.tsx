@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { BarChart3, Download, RotateCcw, Search } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  DollarSign,
+  Download,
+  RotateCcw,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { StaggerGrid, StaggerItem } from "@/components/motion";
 import { TablePagination, usePagination } from "@/components/table-pagination";
@@ -40,10 +47,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { computeUtilization, computeVehicleTco } from "@/lib/analytics";
 import { downloadTextFile, tripsToCsv } from "@/lib/csv";
 import {
+  formatCurrency,
   formatDateTime,
   formatDuration,
   formatKm,
@@ -54,11 +64,20 @@ import {
 const ALL_VEHICLES = "__all__";
 const ALL_DRIVERS = "__all_drivers__";
 
-const chartConfig: ChartConfig = {
-  distanceKm: {
-    label: "Distance (km)",
-    color: "var(--brand-teal)",
-  },
+const distanceChartConfig: ChartConfig = {
+  distanceKm: { label: "Distance (km)", color: "var(--brand-teal)" },
+};
+
+const tcoChartConfig: ChartConfig = {
+  fuelCost: { label: "Fuel", color: "var(--chart-1)" },
+  maintenanceCost: { label: "Maintenance", color: "var(--chart-2)" },
+  expenseCost: { label: "Expenses", color: "var(--chart-3)" },
+  insuranceCost: { label: "Insurance", color: "var(--chart-4)" },
+  depreciationCost: { label: "Depreciation", color: "var(--chart-5)" },
+};
+
+const peakChartConfig: ChartConfig = {
+  trips: { label: "Trips started", color: "var(--brand-blue)" },
 };
 
 export default function ReportsPage() {
@@ -66,6 +85,11 @@ export default function ReportsPage() {
   const vehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
   const trips = useFleetStore((s) => s.trips);
+  const fuelLogs = useFleetStore((s) => s.fuelLogs);
+  const maintenanceRecords = useFleetStore((s) => s.maintenanceRecords);
+  const workOrders = useFleetStore((s) => s.workOrders);
+  const expenses = useFleetStore((s) => s.expenses);
+  const complianceDocs = useFleetStore((s) => s.complianceDocs);
 
   const [vehicleFilter, setVehicleFilter] = useState(ALL_VEHICLES);
   const [driverFilter, setDriverFilter] = useState(ALL_DRIVERS);
@@ -113,15 +137,53 @@ export default function ReportsPage() {
       if (toDate && tripDay > toDate) return false;
       if (q) {
         const vehicle = vehiclesById.get(trip.vehicleId);
-        const driver = trip.driverId ? driversById.get(trip.driverId) : undefined;
+        const driver = trip.driverId
+          ? driversById.get(trip.driverId)
+          : undefined;
         const hay = `${trip.purpose} ${vehicle?.name ?? ""} ${vehicle?.plate ?? ""} ${driver?.name ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [trips, vehicleFilter, driverFilter, fromDate, toDate, search, vehiclesById, driversById]);
+  }, [
+    trips,
+    vehicleFilter,
+    driverFilter,
+    fromDate,
+    toDate,
+    search,
+    vehiclesById,
+    driversById,
+  ]);
 
   const pagination = usePagination(filteredTrips, 10);
+
+  const tcoRows = useMemo(
+    () =>
+      computeVehicleTco(
+        vehicles,
+        trips,
+        fuelLogs,
+        maintenanceRecords,
+        workOrders,
+        expenses,
+        complianceDocs
+      ),
+    [
+      vehicles,
+      trips,
+      fuelLogs,
+      maintenanceRecords,
+      workOrders,
+      expenses,
+      complianceDocs,
+    ]
+  );
+
+  const utilization = useMemo(
+    () => computeUtilization(vehicles, trips, 30),
+    [vehicles, trips]
+  );
 
   const hasActiveFilters =
     vehicleFilter !== ALL_VEHICLES ||
@@ -182,6 +244,11 @@ export default function ReportsPage() {
     0
   );
 
+  const fleetTcoTotal = tcoRows.reduce((s, r) => s + r.totalTco, 0);
+  const fleetTcoDistance = tcoRows.reduce((s, r) => s + r.distanceKm, 0);
+  const fleetCpk =
+    fleetTcoDistance > 0 ? fleetTcoTotal / fleetTcoDistance : null;
+
   const handleExportCsv = () => {
     if (filteredTrips.length === 0) {
       toast.error("No trips to export for the selected filters.");
@@ -189,7 +256,11 @@ export default function ReportsPage() {
     }
     const csv = tripsToCsv(filteredTrips, vehiclesById, driversById);
     const today = toIsoDate();
-    downloadTextFile(`trackflow-trips-${today}.csv`, csv, "text/csv;charset=utf-8");
+    downloadTextFile(
+      `trackflow-trips-${today}.csv`,
+      csv,
+      "text/csv;charset=utf-8"
+    );
     toast.success(`Exported ${filteredTrips.length} trips to CSV.`);
   };
 
@@ -198,11 +269,11 @@ export default function ReportsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Reports
+            Analytics &amp; Reports
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Filter completed trips by date range, vehicle, or driver, inspect
-            daily distance, and export CSV.
+            Trip analytics, Cost-per-Kilometer (CPK) &amp; Total Cost of
+            Ownership (TCO), and fleet utilization reports.
           </p>
         </div>
 
@@ -212,291 +283,552 @@ export default function ReportsPage() {
           className="h-10 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
         >
           <Download className="mr-2 h-4 w-4" />
-          Export CSV
+          Export Trips CSV
         </Button>
       </div>
 
-      {/* Filters */}
-      <Card className="rounded-2xl">
-        <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-12">
-          <div className="space-y-2 lg:col-span-3">
-            <Label htmlFor="report-search">Search</Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="report-search"
-                type="search"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  pagination.setPage(1);
-                }}
-                placeholder="Purpose, plate, driver..."
-                className="pl-10"
-              />
-            </div>
-          </div>
+      <Tabs defaultValue="trips" className="space-y-5">
+        <TabsList className="grid w-full grid-cols-3 rounded-xl sm:max-w-lg">
+          <TabsTrigger value="trips" className="rounded-lg">
+            <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
+            Trip Reports
+          </TabsTrigger>
+          <TabsTrigger value="tco" className="rounded-lg">
+            <DollarSign className="mr-1.5 h-3.5 w-3.5" />
+            CPK &amp; TCO
+          </TabsTrigger>
+          <TabsTrigger value="utilization" className="rounded-lg">
+            <Activity className="mr-1.5 h-3.5 w-3.5" />
+            Utilization
+          </TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-2 lg:col-span-3">
-            <Label htmlFor="report-vehicle">Vehicle</Label>
-            <Select
-              value={vehicleFilter}
-              items={vehicleFilterItems}
-              onValueChange={(value) => {
-                if (value) {
-                  setVehicleFilter(value);
-                  pagination.setPage(1);
-                }
-              }}
-            >
-              <SelectTrigger id="report-vehicle" className="w-full">
-                <SelectValue placeholder="All vehicles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VEHICLES}>All vehicles</SelectItem>
-                {vehicles.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.name} ({v.plate})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* TRIP REPORTS TAB */}
+        <TabsContent value="trips" className="space-y-5">
+          <Card className="rounded-2xl">
+            <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-12">
+              <div className="space-y-2 lg:col-span-3">
+                <Label htmlFor="report-search">Search</Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="report-search"
+                    type="search"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      pagination.setPage(1);
+                    }}
+                    placeholder="Purpose, plate, driver..."
+                    className="pl-10"
+                  />
+                </div>
+              </div>
 
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="report-driver">Driver</Label>
-            <Select
-              value={driverFilter}
-              items={driverFilterItems}
-              onValueChange={(value) => {
-                if (value) {
-                  setDriverFilter(value);
-                  pagination.setPage(1);
-                }
-              }}
-            >
-              <SelectTrigger id="report-driver" className="w-full">
-                <SelectValue placeholder="All drivers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_DRIVERS}>All drivers</SelectItem>
-                {drivers.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="space-y-2 lg:col-span-3">
+                <Label htmlFor="report-vehicle">Vehicle</Label>
+                <Select
+                  value={vehicleFilter}
+                  items={vehicleFilterItems}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setVehicleFilter(value);
+                      pagination.setPage(1);
+                    }
+                  }}
+                >
+                  <SelectTrigger id="report-vehicle" className="w-full">
+                    <SelectValue placeholder="All vehicles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_VEHICLES}>All vehicles</SelectItem>
+                    {vehicles.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name} ({v.plate})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2 lg:col-span-3">
-            <Label htmlFor="report-date-range">Date range</Label>
-            <DateRangePicker
-              id="report-date-range"
-              fromDate={fromDate}
-              toDate={toDate}
-              presets
-              align="end"
-              onChange={({ fromDate: nextFrom, toDate: nextTo }) => {
-                setFromDate(nextFrom);
-                setToDate(nextTo);
-                pagination.setPage(1);
-              }}
-              placeholder="All dates"
-            />
-          </div>
+              <div className="space-y-2 lg:col-span-2">
+                <Label htmlFor="report-driver">Driver</Label>
+                <Select
+                  value={driverFilter}
+                  items={driverFilterItems}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setDriverFilter(value);
+                      pagination.setPage(1);
+                    }
+                  }}
+                >
+                  <SelectTrigger id="report-driver" className="w-full">
+                    <SelectValue placeholder="All drivers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_DRIVERS}>All drivers</SelectItem>
+                    {drivers.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="flex items-end lg:col-span-1">
-            {hasActiveFilters ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={clearFilters}
-                aria-label="Reset report filters"
-                className="h-10 w-full rounded-xl px-2.5"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary KPIs */}
-      <StaggerGrid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StaggerItem>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardDescription>Total distance</CardDescription>
-              <CardTitle className="font-display text-2xl">
-                {formatKm(totalDistanceKm)} km
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </StaggerItem>
-        <StaggerItem>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardDescription>Trips</CardDescription>
-              <CardTitle className="font-display text-2xl">
-                {filteredTrips.length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </StaggerItem>
-        <StaggerItem>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardDescription>Average speed</CardDescription>
-              <CardTitle className="font-display text-2xl">
-                {formatSpeed(averageSpeedKmh)} km/h
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </StaggerItem>
-        <StaggerItem>
-          <Card className="h-full rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardDescription>Top speed</CardDescription>
-              <CardTitle className="font-display text-2xl">
-                {formatSpeed(topSpeedKmh)} km/h
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </StaggerItem>
-      </StaggerGrid>
-
-      {/* Distance-per-day chart */}
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-lg">Distance per day</CardTitle>
-          <CardDescription>
-            Daily completed trip distance in kilometers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
-              <BarChart3 className="h-8 w-8 text-[var(--brand-teal)]" />
-              <p className="mt-3 text-sm font-medium text-foreground">
-                No trip data for this range
-              </p>
-              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Complete a trip or widen the date range filter to populate the
-                daily distance chart.
-              </p>
-            </div>
-          ) : (
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <BarChart data={chartData} accessibilityLayer>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="day"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
+              <div className="space-y-2 lg:col-span-3">
+                <Label htmlFor="report-date-range">Date range</Label>
+                <DateRangePicker
+                  id="report-date-range"
+                  fromDate={fromDate}
+                  toDate={toDate}
+                  presets
+                  align="end"
+                  onChange={({ fromDate: nextFrom, toDate: nextTo }) => {
+                    setFromDate(nextFrom);
+                    setToDate(nextTo);
+                    pagination.setPage(1);
+                  }}
+                  placeholder="All dates"
                 />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => `${v} km`}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar
-                  dataKey="distanceKm"
-                  fill="var(--color-distanceKm)"
-                  radius={[8, 8, 0, 0]}
-                />
-              </BarChart>
-            </ChartContainer>
-          )}
-        </CardContent>
-      </Card>
+              </div>
 
-      {/* Filtered trips table */}
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Filtered trips ({filteredTrips.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {filteredTrips.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No completed trips match the selected filters.
-            </p>
-          ) : (
-            <>
+              <div className="flex items-end lg:col-span-1">
+                {hasActiveFilters ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearFilters}
+                    aria-label="Reset report filters"
+                    className="h-10 w-full rounded-xl px-2.5"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <StaggerGrid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Total distance</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {formatKm(totalDistanceKm)} km
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </StaggerItem>
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Trips</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {filteredTrips.length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </StaggerItem>
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Average speed</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {formatSpeed(averageSpeedKmh)} km/h
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </StaggerItem>
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Top speed</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {formatSpeed(topSpeedKmh)} km/h
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </StaggerItem>
+          </StaggerGrid>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">Distance per day</CardTitle>
+              <CardDescription>
+                Daily completed trip distance in kilometers
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chartData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+                  <BarChart3 className="h-8 w-8 text-[var(--brand-teal)]" />
+                  <p className="mt-3 text-sm font-medium text-foreground">
+                    No trip data for this range
+                  </p>
+                </div>
+              ) : (
+                <ChartContainer
+                  config={distanceChartConfig}
+                  className="h-72 w-full"
+                >
+                  <BarChart data={chartData} accessibilityLayer>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="day"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${v} km`}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="distanceKm"
+                      fill="var(--color-distanceKm)"
+                      radius={[8, 8, 0, 0]}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Filtered trips ({filteredTrips.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {filteredTrips.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No completed trips match the selected filters.
+                </p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Driver</TableHead>
+                          <TableHead>Purpose</TableHead>
+                          <TableHead className="text-right">Distance</TableHead>
+                          <TableHead className="text-right">Duration</TableHead>
+                          <TableHead className="text-right">Top speed</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagination.pageItems.map((trip) => {
+                          const vehicle = vehiclesById.get(trip.vehicleId);
+                          const driver = trip.driverId
+                            ? driversById.get(trip.driverId)
+                            : undefined;
+                          const durationMs = trip.endedAt
+                            ? Math.max(
+                                0,
+                                new Date(trip.endedAt).getTime() -
+                                  new Date(trip.startedAt).getTime()
+                              )
+                            : 0;
+                          return (
+                            <TableRow key={trip.id}>
+                              <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                {formatDateTime(trip.startedAt)}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {vehicle?.name ?? "Unknown"}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {driver?.name ?? "Unassigned"}
+                              </TableCell>
+                              <TableCell>{trip.purpose}</TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatKm(trip.distanceKm)} km
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {formatDuration(durationMs)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="secondary" className="rounded-lg">
+                                  {formatSpeed(trip.maxSpeedKmh)} km/h
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <TablePagination
+                    page={pagination.page}
+                    pageSize={pagination.pageSize}
+                    totalItems={pagination.totalItems}
+                    totalPages={pagination.totalPages}
+                    startIndex={pagination.startIndex}
+                    endIndex={pagination.endIndex}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                    itemLabel="trips"
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TCO & CPK TAB */}
+        <TabsContent value="tco" className="space-y-5">
+          <StaggerGrid className="grid gap-4 sm:grid-cols-3">
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Fleet Total Cost of Ownership</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {formatCurrency(fleetTcoTotal)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-muted-foreground">
+                  Fuel + Maintenance + Work Orders + Expenses + Insurance +
+                  Depreciation (3 mo)
+                </CardContent>
+              </Card>
+            </StaggerItem>
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Fleet Cost per Kilometer (CPK)</CardDescription>
+                  <CardTitle className="font-display text-2xl text-primary">
+                    {fleetCpk !== null
+                      ? `${formatCurrency(fleetCpk)} / km`
+                      : "N/A"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-muted-foreground">
+                  Across {formatKm(fleetTcoDistance)} tracked km
+                </CardContent>
+              </Card>
+            </StaggerItem>
+            <StaggerItem>
+              <Card className="h-full rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardDescription>Vehicles Analyzed</CardDescription>
+                  <CardTitle className="font-display text-2xl">
+                    {tcoRows.length}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </StaggerItem>
+          </StaggerGrid>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Total Cost of Ownership by Vehicle
+              </CardTitle>
+              <CardDescription>
+                Stacked cost breakdown across fuel, maintenance/repairs,
+                operating expenses, insurance, and depreciation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={tcoChartConfig} className="h-72 w-full">
+                <BarChart data={tcoRows} accessibilityLayer>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="vehicleName" tickLine={false} axisLine={false} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `$${v}`}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="fuelCost" stackId="a" fill="var(--color-fuelCost)" />
+                  <Bar
+                    dataKey="maintenanceCost"
+                    stackId="a"
+                    fill="var(--color-maintenanceCost)"
+                  />
+                  <Bar
+                    dataKey="expenseCost"
+                    stackId="a"
+                    fill="var(--color-expenseCost)"
+                  />
+                  <Bar
+                    dataKey="insuranceCost"
+                    stackId="a"
+                    fill="var(--color-insuranceCost)"
+                  />
+                  <Bar
+                    dataKey="depreciationCost"
+                    stackId="a"
+                    fill="var(--color-depreciationCost)"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">Per-Vehicle CPK &amp; TCO Ledger</CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
                       <TableHead>Vehicle</TableHead>
-                      <TableHead>Driver</TableHead>
-                      <TableHead>Purpose</TableHead>
-                      <TableHead className="text-right">Distance</TableHead>
-                      <TableHead className="text-right">Duration</TableHead>
-                      <TableHead className="text-right">Top speed</TableHead>
+                      <TableHead className="text-right">Fuel</TableHead>
+                      <TableHead className="text-right">Maint &amp; WO</TableHead>
+                      <TableHead className="text-right">Expenses</TableHead>
+                      <TableHead className="text-right">Insurance</TableHead>
+                      <TableHead className="text-right">Depr.</TableHead>
+                      <TableHead className="text-right">Total TCO</TableHead>
+                      <TableHead className="text-right">CPK</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pagination.pageItems.map((trip) => {
-                      const vehicle = vehiclesById.get(trip.vehicleId);
-                      const driver = trip.driverId
-                        ? driversById.get(trip.driverId)
-                        : undefined;
-                      const durationMs = trip.endedAt
-                        ? Math.max(
-                            0,
-                            new Date(trip.endedAt).getTime() -
-                              new Date(trip.startedAt).getTime()
-                          )
-                        : 0;
-                      return (
-                        <TableRow key={trip.id}>
-                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                            {formatDateTime(trip.startedAt)}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {vehicle?.name ?? "Unknown"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {driver?.name ?? "Unassigned"}
-                          </TableCell>
-                          <TableCell>{trip.purpose}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatKm(trip.distanceKm)} km
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {formatDuration(durationMs)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant="secondary" className="rounded-lg">
-                              {formatSpeed(trip.maxSpeedKmh)} km/h
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {tcoRows.map((row) => (
+                      <TableRow key={row.vehicleId}>
+                        <TableCell>
+                          <p className="font-medium">{row.vehicleName}</p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {row.plate}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(row.fuelCost)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(row.maintenanceCost)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(row.expenseCost)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(row.insuranceCost)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(row.depreciationCost)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {formatCurrency(row.totalTco)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="rounded-lg border-primary/30 bg-primary/15 text-primary">
+                            {row.cpk !== null
+                              ? `${formatCurrency(row.cpk)}/km`
+                              : "—"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
-              <TablePagination
-                page={pagination.page}
-                pageSize={pagination.pageSize}
-                totalItems={pagination.totalItems}
-                totalPages={pagination.totalPages}
-                startIndex={pagination.startIndex}
-                endIndex={pagination.endIndex}
-                onPageChange={pagination.setPage}
-                onPageSizeChange={pagination.setPageSize}
-                itemLabel="trips"
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* UTILIZATION & PEAK DEMAND TAB */}
+        <TabsContent value="utilization" className="space-y-5">
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">Peak Demand Hours (24h)</CardTitle>
+              <CardDescription>
+                Completed trip dispatches grouped by start hour to optimize
+                driver shifts and fleet sizing.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={peakChartConfig} className="h-64 w-full">
+                <BarChart data={utilization.peakHours} accessibilityLayer>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar
+                    dataKey="trips"
+                    fill="var(--color-trips)"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Fleet Asset Utilization (30-day window)
+              </CardTitle>
+              <CardDescription>
+                Identifies underused assets so you can rebalance routes or
+                right-size the fleet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead className="text-right">Trips</TableHead>
+                      <TableHead className="text-right">Active days</TableHead>
+                      <TableHead className="text-right">Distance</TableHead>
+                      <TableHead className="text-right">Utilization</TableHead>
+                      <TableHead>Assessment</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {utilization.byVehicle.map((row) => (
+                      <TableRow key={row.vehicleId}>
+                        <TableCell>
+                          <p className="font-medium">{row.vehicleName}</p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {row.plate}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.tripCount}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.activeDays} / 30d
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatKm(row.totalDistanceKm)} km
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold">
+                          {row.utilizationPct}%
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={row.underused ? "outline" : "secondary"}
+                            className={
+                              row.underused
+                                ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
+                                : "border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]"
+                            }
+                          >
+                            {row.underused ? "Underused" : "Healthy"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { FuelLog } from "@/types";
+import type { FuelLog, Vehicle } from "@/types";
 
 export interface FuelEfficiencyPoint {
   logId: string;
@@ -7,6 +7,12 @@ export interface FuelEfficiencyPoint {
   distanceKm: number;
   liters: number;
   kmPerLiter: number;
+}
+
+export interface FuelAnomaly {
+  logId: string;
+  type: "over_capacity" | "efficiency_drop";
+  message: string;
 }
 
 /**
@@ -65,4 +71,66 @@ export function getAverageEfficiency(
   const totalLiters = points.reduce((sum, p) => sum + p.liters, 0);
   if (totalLiters <= 0) return null;
   return Number((totalDist / totalLiters).toFixed(2));
+}
+
+export function kmPerLiterToMpg(kmPerLiter: number): number {
+  return Number((kmPerLiter * 2.3521458).toFixed(2));
+}
+
+/**
+ * Flags fuel logs that exceed a vehicle's tank capacity (possible theft/billing error)
+ * or exhibit a sudden >25% drop below the vehicle's average km/L efficiency.
+ */
+export function detectFuelAnomalies(
+  logs: readonly FuelLog[],
+  vehiclesById: ReadonlyMap<string, Vehicle>
+): Map<string, FuelAnomaly[]> {
+  const anomalies = new Map<string, FuelAnomaly[]>();
+
+  const pushAnomaly = (logId: string, item: FuelAnomaly) => {
+    const list = anomalies.get(logId) ?? [];
+    list.push(item);
+    anomalies.set(logId, list);
+  };
+
+  // 1. Over tank capacity check
+  for (const log of logs) {
+    const vehicle = vehiclesById.get(log.vehicleId);
+    const capacity = vehicle?.tankCapacityLiters;
+    if (typeof capacity === "number" && capacity > 0 && log.liters > capacity) {
+      pushAnomaly(log.id, {
+        logId: log.id,
+        type: "over_capacity",
+        message: `${log.liters.toFixed(1)} L exceeds ${capacity} L tank capacity`,
+      });
+    }
+  }
+
+  // 2. Sudden efficiency drop check per vehicle
+  const byVehicle = new Map<string, FuelLog[]>();
+  for (const log of logs) {
+    const arr = byVehicle.get(log.vehicleId) ?? [];
+    arr.push(log);
+    byVehicle.set(log.vehicleId, arr);
+  }
+
+  for (const [, vLogs] of byVehicle) {
+    const points = computeFuelEfficiency(vLogs);
+    if (points.length < 2) continue;
+    const avg = getAverageEfficiency(points);
+    if (!avg || avg <= 0) continue;
+
+    for (const pt of points) {
+      const dropRatio = (avg - pt.kmPerLiter) / avg;
+      if (dropRatio >= 0.25) {
+        pushAnomaly(pt.logId, {
+          logId: pt.logId,
+          type: "efficiency_drop",
+          message: `${pt.kmPerLiter} km/L is ${Math.round(dropRatio * 100)}% below vehicle avg (${avg} km/L)`,
+        });
+      }
+    }
+  }
+
+  return anomalies;
 }

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sheet";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
+import { ROLE_LABELS } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -146,7 +147,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               {currentUser?.name ?? "Demo Admin"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {currentUser?.email ?? "demo@demo.com"}
+              {currentUser?.role
+                ? ROLE_LABELS[currentUser.role]
+                : "Super Admin"}
             </p>
           </div>
           <ThemeToggle />

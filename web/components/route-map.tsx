@@ -10,7 +10,7 @@ import {
   Navigation,
   Plus,
 } from "lucide-react";
-import type { LatLng, TrackPoint } from "@/types";
+import type { GeofenceZone, LatLng, TrackPoint } from "@/types";
 import {
   computeBearingDegrees,
   formatCardinalDirection,
@@ -25,6 +25,7 @@ interface RouteMapProps {
   showPlannedRoute?: boolean;
   activeWaypointIndex?: number;
   headingDeg?: number;
+  geofences?: readonly GeofenceZone[];
   className?: string;
 }
 
@@ -107,6 +108,7 @@ export function RouteMap({
   showPlannedRoute = true,
   activeWaypointIndex = 0,
   headingDeg,
+  geofences = [],
   className,
 }: RouteMapProps) {
   const uid = useId();
@@ -210,6 +212,23 @@ export function RouteMap({
       ),
     [projection]
   );
+
+  const projectedGeofences = useMemo(() => {
+    return geofences
+      .filter((z) => z.active && z.polygon.length >= 3)
+      .map((zone) => {
+        const pts = zone.polygon.map((pt) => projection.project(pt));
+        const path =
+          pts
+            .map(
+              (p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
+            )
+            .join(" ") + " Z";
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        return { zone, path, cx, cy };
+      });
+  }, [geofences, projection]);
 
   const plannedPathData = useMemo(
     () =>
@@ -421,6 +440,44 @@ export function RouteMap({
             strokeWidth="1.4"
             strokeLinejoin="round"
           />
+
+          {/* Geofence Zone Polygons */}
+          {projectedGeofences.map(({ zone, path, cx, cy }) => {
+            const fill =
+              zone.type === "restricted"
+                ? "rgba(239, 68, 68, 0.16)"
+                : zone.type === "warehouse"
+                  ? "rgba(6, 182, 212, 0.15)"
+                  : "rgba(56, 189, 248, 0.15)";
+            const stroke =
+              zone.type === "restricted"
+                ? "rgba(248, 113, 113, 0.8)"
+                : zone.type === "warehouse"
+                  ? "rgba(34, 211, 238, 0.78)"
+                  : "rgba(56, 189, 248, 0.78)";
+            return (
+              <g key={zone.id}>
+                <path
+                  d={path}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth="1.6"
+                  strokeDasharray={zone.type === "restricted" ? "6 4" : "4 3"}
+                />
+                <text
+                  x={cx}
+                  y={cy}
+                  textAnchor="middle"
+                  fill={stroke}
+                  fontSize="9.5"
+                  fontWeight="700"
+                  style={{ letterSpacing: "0.05em" }}
+                >
+                  {zone.name.toUpperCase()}
+                </text>
+              </g>
+            );
+          })}
 
           {/* Water labels */}
           <text
