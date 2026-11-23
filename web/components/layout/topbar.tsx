@@ -27,11 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { ROLE_LABELS } from "@/lib/rbac";
@@ -81,13 +77,7 @@ const ROLE_ICON: Record<UserRole, typeof ShieldCheck> = {
   driver: Truck,
 };
 
-const ROLE_ORDER: UserRole[] = [
-  "super_admin",
-  "fleet_manager",
-  "dispatcher",
-  "mechanic",
-  "driver",
-];
+const ROLE_ORDER: UserRole[] = ["super_admin", "fleet_manager", "dispatcher", "mechanic", "driver"];
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -122,7 +112,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
 
   const meta =
     Object.entries(PAGE_TITLES).find(
-      ([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+      ([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`),
     )?.[1] ?? PAGE_TITLES["/dashboard"];
 
   const handleSignOut = () => {
@@ -149,9 +139,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
           <h1 className="truncate text-base font-bold tracking-tight text-foreground sm:text-lg">
             {meta.title}
           </h1>
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">
-            {meta.subtitle}
-          </p>
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">{meta.subtitle}</p>
         </div>
       </div>
 
@@ -164,7 +152,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
             "fp-telemetry hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-all md:inline-flex",
             isSimulating && liveCount > 0
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/18 dark:text-emerald-300"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/18 dark:text-amber-300"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/18 dark:text-amber-300",
           )}
         >
           <span
@@ -172,7 +160,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
               "size-2 rounded-full",
               isSimulating && liveCount > 0
                 ? "animate-fp-pulse-dot bg-emerald-500"
-                : "bg-amber-500"
+                : "bg-amber-500",
             )}
           />
           {isSimulating && liveCount > 0
@@ -245,7 +233,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
                     }}
                     className={cn(
                       "flex w-full items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-muted/50",
-                      !alert.read && "bg-cyan-500/[0.04]"
+                      !alert.read && "bg-cyan-500/4",
                     )}
                   >
                     <span
@@ -255,7 +243,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
                           ? "bg-rose-500/15 text-rose-500"
                           : alert.severity === "warning"
                             ? "bg-amber-500/15 text-amber-500"
-                            : "bg-cyan-500/15 text-cyan-500"
+                            : "bg-cyan-500/15 text-cyan-500",
                       )}
                     >
                       {alert.severity === "info" ? (
@@ -301,10 +289,10 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
               {getInitials(currentUser?.name ?? "Alex Morgan")}
             </span>
             <div className="hidden min-w-0 sm:block">
-              <p className="max-w-[110px] truncate text-xs font-semibold leading-tight text-foreground">
+              <p className="max-w-27.5 truncate text-xs font-semibold leading-tight text-foreground">
                 {currentUser?.name ?? "Alex Morgan"}
               </p>
-              <p className="max-w-[110px] truncate text-[10px] leading-tight text-muted-foreground">
+              <p className="max-w-27.5 truncate text-[10px] leading-tight text-muted-foreground">
                 {ROLE_LABELS[activeRole]} · Switch
               </p>
             </div>
@@ -335,7 +323,7 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
                   onClick={() => switchRole(roleKey)}
                   className={cn(
                     "flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-xs font-medium",
-                    isCurrent && "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+                    isCurrent && "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
                   )}
                 >
                   <span className="flex items-center gap-2">

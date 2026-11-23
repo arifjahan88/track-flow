@@ -163,7 +163,7 @@ export function Sidebar({
                   {isActive ? (
                     <span
                       aria-hidden="true"
-                      className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r-full bg-cyan-500 shadow-[0_0_10px_#06b6d4]"
+                      className="absolute top-2 bottom-2 left-0 w-0.75 rounded-r-full bg-cyan-500 shadow-[0_0_10px_#06b6d4]"
                     />
                   ) : null}
 

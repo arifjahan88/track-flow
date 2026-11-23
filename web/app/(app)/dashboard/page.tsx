@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  Compass,
-  Navigation,
-  Plus,
-  Route,
-  Truck,
-} from "lucide-react";
+import { AlertTriangle, Compass, Navigation, Plus, Route, Truck } from "lucide-react";
 import { FleetCharts } from "@/components/dashboard/fleet-charts";
 import { LiveFleetRoster } from "@/components/dashboard/live-fleet-roster";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +37,7 @@ export default function DashboardPage() {
           ))}
         </div>
         <Skeleton className="h-24 rounded-2xl" />
-        <Skeleton className="h-[320px] rounded-2xl" />
+        <Skeleton className="h-80 rounded-2xl" />
       </div>
     );
   }
@@ -53,35 +46,28 @@ export default function DashboardPage() {
   const activeRole = currentUser?.role ?? "super_admin";
   const assignedVehicle =
     activeRole === "driver"
-      ? vehicles.find(
-          (v) => v.id === (currentUser?.assignedVehicleId ?? "veh-1")
-        )
+      ? vehicles.find((v) => v.id === (currentUser?.assignedVehicleId ?? "veh-1"))
       : undefined;
 
   const totalUnits = vehicles.length;
   const inTripCount = vehicles.filter((v) => v.status === "on_trip").length;
-  const standbyCount = vehicles.filter(
-    (v) => (v.status ?? "available") === "available"
-  ).length;
-  const maintenanceCount = vehicles.filter(
-    (v) => v.status === "under_maintenance"
-  ).length;
+  const standbyCount = vehicles.filter((v) => (v.status ?? "available") === "available").length;
+  const maintenanceCount = vehicles.filter((v) => v.status === "under_maintenance").length;
   const inactiveCount = vehicles.filter(
-    (v) => v.status === "out_of_service" || v.status === "decommissioned"
+    (v) => v.status === "out_of_service" || v.status === "decommissioned",
   ).length;
 
   const totalDistanceKm = trips.reduce((sum, t) => sum + t.distanceKm, 0);
   const unreadAlerts = alerts.filter((a) => !a.read).length;
   const criticalAlerts = alerts.filter((a) => a.severity === "critical").length;
 
-  const pct = (n: number) =>
-    totalUnits > 0 ? Math.round((n / totalUnits) * 100) : 0;
+  const pct = (n: number) => (totalUnits > 0 ? Math.round((n / totalUnits) * 100) : 0);
 
   return (
     <div className="space-y-5">
       {/* Driver Role Assignment Spotlight Banner */}
       {assignedVehicle ? (
-        <Card className="rounded-2xl border-cyan-500/35 bg-cyan-500/[0.06]">
+        <Card className="rounded-2xl border-cyan-500/35 bg-cyan-500/6">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400">
@@ -97,10 +83,8 @@ export default function DashboardPage() {
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Fuel {Math.round(assignedVehicle.fuelLevelPercent ?? 75)}% ·
-                  Odometer{" "}
-                  {Math.round(assignedVehicle.odometerKm).toLocaleString()} km ·
-                  Status:{" "}
+                  Fuel {Math.round(assignedVehicle.fuelLevelPercent ?? 75)}% · Odometer{" "}
+                  {Math.round(assignedVehicle.odometerKm).toLocaleString()} km · Status:{" "}
                   {(assignedVehicle.status ?? "available").replaceAll("_", " ")}
                 </p>
               </div>
@@ -108,9 +92,7 @@ export default function DashboardPage() {
             <Button
               type="button"
               size="sm"
-              onClick={() =>
-                router.push(`/trips?vehicle=${assignedVehicle.id}`)
-              }
+              onClick={() => router.push(`/trips?vehicle=${assignedVehicle.id}`)}
               className="gap-1.5 rounded-xl bg-cyan-500 font-semibold text-slate-950 hover:bg-cyan-400"
             >
               <Navigation className="size-3.5" />
@@ -131,19 +113,13 @@ export default function DashboardPage() {
             <span className="font-semibold text-foreground">
               {currentUser?.name ?? "Alex Morgan"}
             </span>{" "}
-            ({ROLE_LABELS[activeRole]}) — real-time local telemetry persisted to
-            browser storage.
+            ({ROLE_LABELS[activeRole]}) — real-time local telemetry persisted to browser storage.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/trips">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 gap-1.5 rounded-xl"
-            >
+            <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl">
               <Compass className="size-4 text-cyan-500" />
               Live GPS Map
             </Button>
@@ -166,9 +142,7 @@ export default function DashboardPage() {
         <Card className="fp-glass rounded-2xl">
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Total Fleet
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">Total Fleet</p>
               <div className="mt-2 flex items-baseline gap-1.5">
                 <span className="fp-telemetry text-3xl font-bold text-foreground">
                   {totalUnits}
@@ -198,9 +172,7 @@ export default function DashboardPage() {
                 <span className="fp-telemetry text-3xl font-bold text-foreground">
                   {inTripCount}
                 </span>
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                  live
-                </span>
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">live</span>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
                 {inTripCount} ongoing corridors
@@ -215,9 +187,7 @@ export default function DashboardPage() {
         <Card className="fp-glass rounded-2xl">
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Distance Covered
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">Distance Covered</p>
               <div className="mt-2 flex items-baseline gap-1.5">
                 <span className="fp-telemetry text-3xl font-bold text-foreground">
                   {totalDistanceKm.toFixed(1)}
@@ -237,9 +207,7 @@ export default function DashboardPage() {
         <Card className="fp-glass rounded-2xl">
           <CardContent className="flex items-start justify-between p-5">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Active Alerts
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">Active Alerts</p>
               <div className="mt-2 flex items-baseline gap-1.5">
                 <span className="fp-telemetry text-3xl font-bold text-foreground">
                   {unreadAlerts}
@@ -262,9 +230,7 @@ export default function DashboardPage() {
         <CardContent className="space-y-3 p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-foreground">
-                Fleet Status Distribution
-              </p>
+              <p className="text-sm font-semibold text-foreground">Fleet Status Distribution</p>
               <p className="text-xs text-muted-foreground">
                 Live operational availability across all {totalUnits} units
               </p>
