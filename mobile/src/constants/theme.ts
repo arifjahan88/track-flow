@@ -92,26 +92,22 @@ export const Colors: Record<"dark" | "light", TrackFlowPalette> = {
 
 export type ThemeColor = keyof TrackFlowPalette;
 
-export const Fonts = Platform.select({
-  ios: {
-    sans: "System",
-    serif: "Georgia",
-    rounded: "System",
-    mono: "Menlo",
-  },
-  default: {
-    sans: "normal",
-    serif: "serif",
-    rounded: "normal",
-    mono: "monospace",
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    serif: "Georgia, serif",
-    rounded: "system-ui, sans-serif",
-    mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-  },
-});
+export const Fonts = {
+  regular: "Inter_400Regular",
+  medium: "Inter_500Medium",
+  semibold: "Inter_600SemiBold",
+  bold: "Inter_700Bold",
+  extrabold: "Inter_800ExtraBold",
+  sans: "Inter_400Regular",
+  serif: "Georgia",
+  rounded: "Inter_500Medium",
+  mono: Platform.select({
+    ios: "Menlo",
+    android: "monospace",
+    web: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+    default: "monospace",
+  }),
+} as const;
 
 export const Spacing = {
   half: 2,

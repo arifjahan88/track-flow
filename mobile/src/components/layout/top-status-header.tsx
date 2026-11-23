@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { RoleSwitcherSheet } from "@/components/layout/role-switcher-sheet";
 import { PulseDot } from "@/components/ui/pulse-dot";
 import { ThemeToggleButton } from "@/components/ui/theme-toggle";
-import { Radius } from "@/constants/theme";
+import { Fonts, Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { triggerMediumHaptic } from "@/lib/haptics";
+import { triggerLightHaptic, triggerMediumHaptic } from "@/lib/haptics";
 import { ROLE_LABELS } from "@/lib/rbac";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
@@ -133,25 +134,38 @@ export function TopStatusHeader({
 
           <ThemeToggleButton compact />
 
-          {unreadAlerts > 0 ? (
-            <Pressable
-              onPress={markAllAlertsRead}
-              style={[
-                styles.alertBtn,
-                {
-                  backgroundColor: theme.isDark
-                    ? "rgba(255, 107, 115, 0.16)"
-                    : "rgba(220, 38, 38, 0.12)",
-                  borderColor: theme.danger,
-                },
-              ]}
-            >
-              <Ionicons name="notifications" size={14} color={theme.danger} />
-              <Text style={[styles.alertCount, { color: theme.danger }]}>
-                {unreadAlerts}
-              </Text>
-            </Pressable>
-          ) : null}
+          {/* Dedicated Notification Bell Icon */}
+          <Pressable
+            onPress={() => {
+              triggerLightHaptic();
+              router.push("/modal/notifications");
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Notifications, ${unreadAlerts} unread`}
+            style={[
+              styles.alertBtn,
+              {
+                backgroundColor: theme.cardElevated,
+                borderColor: unreadAlerts > 0 ? theme.danger : theme.border,
+              },
+            ]}
+          >
+            <Ionicons
+              name={unreadAlerts > 0 ? "notifications" : "notifications-outline"}
+              size={16}
+              color={unreadAlerts > 0 ? theme.danger : theme.textSecondary}
+            />
+            {unreadAlerts > 0 ? (
+              <View
+                style={[
+                  styles.unreadBadge,
+                  { backgroundColor: theme.danger },
+                ]}
+              >
+                <Text style={styles.alertCount}>{unreadAlerts}</Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
       </View>
 
@@ -227,16 +241,29 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   alertBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 8,
+    width: 36,
     height: 36,
     borderRadius: Radius.full,
     borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  unreadBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
   alertCount: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "800",
+    color: "#FFFFFF",
+    fontFamily: Fonts.mono,
   },
 });
