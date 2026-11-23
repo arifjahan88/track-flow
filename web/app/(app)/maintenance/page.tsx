@@ -6,12 +6,7 @@ import { IncidentsTab } from "@/components/maintenance/incidents-tab";
 import { ServiceRulesTab } from "@/components/maintenance/service-rules-tab";
 import { WorkOrdersTab } from "@/components/maintenance/work-orders-tab";
 import { StaggerGrid, StaggerItem } from "@/components/motion";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/store/auth-store";
@@ -24,8 +19,7 @@ export default function MaintenancePage() {
   const hydrated = useHydrated();
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const currentRole =
-    users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
+  const currentRole = users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
 
   const canWriteMaint = can(currentRole, "maintenance:write");
   const canWriteWorkOrders = can(currentRole, "work_orders:write");
@@ -36,10 +30,7 @@ export default function MaintenancePage() {
   const workOrders = useFleetStore((s) => s.workOrders);
   const incidents = useFleetStore((s) => s.incidents);
 
-  const vehiclesById = useMemo(
-    () => new Map(vehicles.map((v) => [v.id, v])),
-    [vehicles]
-  );
+  const vehiclesById = useMemo(() => new Map(vehicles.map((v) => [v.id, v])), [vehicles]);
 
   const counts = useMemo(() => {
     if (!hydrated) {
@@ -49,12 +40,7 @@ export default function MaintenancePage() {
     let dueSoon = 0;
     for (const rec of records) {
       const v = vehiclesById.get(rec.vehicleId);
-      const st = getMaintenanceStatus(
-        rec,
-        v?.odometerKm ?? 0,
-        undefined,
-        v?.engineHours
-      );
+      const st = getMaintenanceStatus(rec, v?.odometerKm ?? 0, undefined, v?.engineHours);
       if (st === "overdue") overdue += 1;
       else if (st === "due_soon") dueSoon += 1;
     }
@@ -82,8 +68,8 @@ export default function MaintenancePage() {
           Maintenance, Work Orders &amp; Incidents
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Preventive rules (odometer, engine hours, calendar), corrective work
-          orders &amp; vendor parts, and accident reporting.
+          Preventive rules (odometer, engine hours, calendar), corrective work orders &amp; vendor
+          parts, and accident reporting.
         </p>
       </div>
 
@@ -102,7 +88,7 @@ export default function MaintenancePage() {
           <Card className="h-full rounded-2xl">
             <CardHeader className="pb-2">
               <CardDescription>Due Soon (14d / 500km / 25h)</CardDescription>
-              <CardTitle className="font-display text-2xl text-[var(--brand-amber)]">
+              <CardTitle className="font-display text-2xl text-brand-amber">
                 {counts.dueSoon}
               </CardTitle>
             </CardHeader>
@@ -112,9 +98,7 @@ export default function MaintenancePage() {
           <Card className="h-full rounded-2xl">
             <CardHeader className="pb-2">
               <CardDescription>Active Work Orders</CardDescription>
-              <CardTitle className="font-display text-2xl text-primary">
-                {counts.openWo}
-              </CardTitle>
+              <CardTitle className="font-display text-2xl text-primary">{counts.openWo}</CardTitle>
             </CardHeader>
           </Card>
         </StaggerItem>
@@ -122,7 +106,7 @@ export default function MaintenancePage() {
           <Card className="h-full rounded-2xl">
             <CardHeader className="pb-2">
               <CardDescription>Open Incidents</CardDescription>
-              <CardTitle className="font-display text-2xl text-[var(--brand-amber)]">
+              <CardTitle className="font-display text-2xl text-brand-amber">
                 {counts.openInc}
               </CardTitle>
             </CardHeader>

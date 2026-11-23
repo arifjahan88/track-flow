@@ -7,19 +7,8 @@ import { OperatingExpensesTab } from "@/components/fuel/operating-expenses-tab";
 import { StaggerGrid, StaggerItem } from "@/components/motion";
 import { Sparkline } from "@/components/sparkline";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -49,8 +38,7 @@ export default function FuelPage() {
   const hydrated = useHydrated();
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const currentRole =
-    users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
+  const currentRole = users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
   const canLogFuel = can(currentRole, "fuel:write");
   const canLogExpenses = can(currentRole, "expenses:write");
 
@@ -63,10 +51,7 @@ export default function FuelPage() {
   const [unit, setUnit] = useState<"kml" | "mpg">("kml");
   const [previewReceipt, setPreviewReceipt] = useState<string | null>(null);
 
-  const vehiclesById = useMemo(
-    () => new Map(vehicles.map((v) => [v.id, v])),
-    [vehicles]
-  );
+  const vehiclesById = useMemo(() => new Map(vehicles.map((v) => [v.id, v])), [vehicles]);
 
   const vehicleFilterItems = useMemo(() => {
     const items: Record<string, string> = { [ALL_VEHICLES]: "All vehicles" };
@@ -79,7 +64,7 @@ export default function FuelPage() {
       vehicleFilter === ALL_VEHICLES
         ? fuelLogs
         : fuelLogs.filter((l) => l.vehicleId === vehicleFilter),
-    [fuelLogs, vehicleFilter]
+    [fuelLogs, vehicleFilter],
   );
 
   const scopedExpenses = useMemo(
@@ -87,12 +72,12 @@ export default function FuelPage() {
       vehicleFilter === ALL_VEHICLES
         ? expenses
         : expenses.filter((e) => e.vehicleId === vehicleFilter),
-    [expenses, vehicleFilter]
+    [expenses, vehicleFilter],
   );
 
   const anomaliesByLogId = useMemo(
     () => detectFuelAnomalies(fuelLogs, vehiclesById),
-    [fuelLogs, vehiclesById]
+    [fuelLogs, vehiclesById],
   );
 
   const efficiencyPoints = useMemo(() => {
@@ -112,7 +97,7 @@ export default function FuelPage() {
 
   const efficiencyByLogId = useMemo(
     () => new Map(efficiencyPoints.map((p) => [p.logId, p.kmPerLiter])),
-    [efficiencyPoints]
+    [efficiencyPoints],
   );
 
   if (!hydrated) {
@@ -133,10 +118,7 @@ export default function FuelPage() {
   const totalLiters = scopedFuelLogs.reduce((sum, l) => sum + l.liters, 0);
   const totalExpenses = scopedExpenses.reduce((sum, e) => sum + e.amount, 0);
   const avgEfficiency = getAverageEfficiency(efficiencyPoints);
-  const anomalyCount = Array.from(anomaliesByLogId.values()).reduce(
-    (s, arr) => s + arr.length,
-    0
-  );
+  const anomalyCount = Array.from(anomaliesByLogId.values()).reduce((s, arr) => s + arr.length, 0);
 
   const formatEff = (kml: number) =>
     unit === "mpg" ? `${kmPerLiterToMpg(kml)} MPG` : `${kml} km/L`;
@@ -149,8 +131,8 @@ export default function FuelPage() {
             Fuel &amp; Operating Expenses
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Track fill-ups, receipts, efficiency anomalies (theft/leak
-            detection), and trip operating expenses.
+            Track fill-ups, receipts, efficiency anomalies (theft/leak detection), and trip
+            operating expenses.
           </p>
         </div>
 
@@ -194,8 +176,7 @@ export default function FuelPage() {
           <div className="flex items-center gap-2.5 text-sm">
             <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
             <span className="font-semibold text-foreground">
-              {anomalyCount} fuel anomal{anomalyCount === 1 ? "y" : "ies"}{" "}
-              detected
+              {anomalyCount} fuel anomal{anomalyCount === 1 ? "y" : "ies"} detected
             </span>
             <span className="text-xs text-muted-foreground">
               (sudden efficiency drop &gt;25% or volume exceeding tank capacity)
@@ -218,9 +199,7 @@ export default function FuelPage() {
           <Card className="h-full rounded-2xl">
             <CardHeader className="pb-2">
               <CardDescription>Total fuel spend</CardDescription>
-              <CardTitle className="font-display text-2xl">
-                {formatCurrency(totalSpend)}
-              </CardTitle>
+              <CardTitle className="font-display text-2xl">{formatCurrency(totalSpend)}</CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground">
               {totalLiters.toFixed(1)} L across {scopedFuelLogs.length} fill-ups
@@ -260,12 +239,12 @@ export default function FuelPage() {
           <Card className="h-full rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardDescription>Efficiency trend</CardDescription>
-              <TrendingUp className="h-4 w-4 text-[var(--brand-teal)]" />
+              <TrendingUp className="h-4 w-4 text-brand-teal" />
             </CardHeader>
             <CardContent>
               <Sparkline
                 values={efficiencyPoints.map((p) =>
-                  unit === "mpg" ? kmPerLiterToMpg(p.kmPerLiter) : p.kmPerLiter
+                  unit === "mpg" ? kmPerLiterToMpg(p.kmPerLiter) : p.kmPerLiter,
                 )}
                 labels={efficiencyPoints.map((p) => formatShortDate(p.date))}
               />

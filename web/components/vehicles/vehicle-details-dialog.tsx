@@ -27,18 +27,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFleetStore } from "@/store/fleet-store";
-import {
-  COMPLIANCE_DOC_LABELS,
-  COMPLIANCE_DOC_TYPES,
-  getComplianceStatus,
-} from "@/lib/compliance";
-import {
-  formatCurrency,
-  formatKm,
-  formatShortDate,
-  offsetIsoDate,
-  toIsoDate,
-} from "@/lib/format";
+import { COMPLIANCE_DOC_LABELS, COMPLIANCE_DOC_TYPES, getComplianceStatus } from "@/lib/compliance";
+import { formatCurrency, formatKm, formatShortDate, offsetIsoDate, toIsoDate } from "@/lib/format";
 import { computeFuelEfficiency, getAverageEfficiency } from "@/lib/fuel";
 import { getMaintenanceStatus } from "@/lib/maintenance";
 import type { ComplianceDocType, Vehicle } from "@/types";
@@ -67,9 +57,7 @@ export function VehicleDetailsDialog({
   const [docIssueDate, setDocIssueDate] = useState("");
   const [docExpiryDate, setDocExpiryDate] = useState("");
   const [docCost, setDocCost] = useState("");
-  const [docAttachment, setDocAttachment] = useState<string | undefined>(
-    undefined
-  );
+  const [docAttachment, setDocAttachment] = useState<string | undefined>(undefined);
 
   const detailsFuelLogs = vehicle
     ? fuelLogs
@@ -81,9 +69,7 @@ export function VehicleDetailsDialog({
   const detailsMaintenance = vehicle
     ? maintenanceRecords.filter((m) => m.vehicleId === vehicle.id)
     : [];
-  const detailsCompliance = vehicle
-    ? complianceDocs.filter((c) => c.vehicleId === vehicle.id)
-    : [];
+  const detailsCompliance = vehicle ? complianceDocs.filter((c) => c.vehicleId === vehicle.id) : [];
 
   const openAddDoc = () => {
     setDocType("insurance");
@@ -133,12 +119,7 @@ export function VehicleDetailsDialog({
             {vehicle?.name} ({vehicle?.plate})
           </DialogTitle>
           <DialogDescription>
-            {[
-              vehicle?.year,
-              vehicle?.make,
-              vehicle?.model,
-              vehicle?.fuelType,
-            ]
+            {[vehicle?.year, vehicle?.make, vehicle?.model, vehicle?.fuelType]
               .filter(Boolean)
               .join(" · ") || vehicle?.type}{" "}
             · Odometer {vehicle ? formatKm(vehicle.odometerKm) : "0.00"} km
@@ -167,12 +148,7 @@ export function VehicleDetailsDialog({
                 Automated expiry alerts at 30, 15, and 7 days prior.
               </p>
               {canEditCompliance ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={openAddDoc}
-                  className="rounded-xl"
-                >
+                <Button type="button" size="sm" onClick={openAddDoc} className="rounded-xl">
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   Add document
                 </Button>
@@ -240,17 +216,11 @@ export function VehicleDetailsDialog({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label>Issue date</Label>
-                    <DatePicker
-                      value={docIssueDate}
-                      onChange={setDocIssueDate}
-                    />
+                    <DatePicker value={docIssueDate} onChange={setDocIssueDate} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Expiry date</Label>
-                    <DatePicker
-                      value={docExpiryDate}
-                      onChange={setDocExpiryDate}
-                    />
+                    <DatePicker value={docExpiryDate} onChange={setDocExpiryDate} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -303,17 +273,15 @@ export function VehicleDetailsDialog({
                       <div className="flex items-center gap-2">
                         <Badge
                           variant={
-                            st.level === "expired" ||
-                            st.level === "critical_7d"
+                            st.level === "expired" || st.level === "critical_7d"
                               ? "destructive"
                               : "secondary"
                           }
                           className={
-                            st.level === "warning_15d" ||
-                            st.level === "notice_30d"
-                              ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
+                            st.level === "warning_15d" || st.level === "notice_30d"
+                              ? "border-(--brand-amber)/40 bg-(--brand-amber)/15 text-brand-amber"
                               : st.level === "valid"
-                                ? "border-[var(--brand-teal)]/30 bg-[var(--brand-teal)]/15 text-[var(--brand-teal)]"
+                                ? "border-(--brand-teal)/30 bg-(--brand-teal)/15 text-brand-teal"
                                 : ""
                           }
                         >
@@ -345,13 +313,9 @@ export function VehicleDetailsDialog({
           <TabsContent value="fuel" className="mt-4 space-y-4">
             <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-3">
               <div>
-                <p className="text-xs text-muted-foreground">
-                  Average efficiency
-                </p>
+                <p className="text-xs text-muted-foreground">Average efficiency</p>
                 <p className="font-display text-xl font-semibold text-foreground">
-                  {detailsAvgEfficiency !== null
-                    ? `${detailsAvgEfficiency} km/L`
-                    : "N/A"}
+                  {detailsAvgEfficiency !== null ? `${detailsAvgEfficiency} km/L` : "N/A"}
                 </p>
               </div>
               <Link href="/fuel" onClick={onClose}>
@@ -414,7 +378,7 @@ export function VehicleDetailsDialog({
                     rec,
                     vehicle?.odometerKm ?? 0,
                     undefined,
-                    vehicle?.engineHours
+                    vehicle?.engineHours,
                   );
                   return (
                     <div
@@ -422,26 +386,20 @@ export function VehicleDetailsDialog({
                       className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm"
                     >
                       <div>
-                        <p className="font-medium text-foreground">
-                          {rec.title}
-                        </p>
+                        <p className="font-medium text-foreground">{rec.title}</p>
                         <p className="text-xs text-muted-foreground">
                           {rec.type}
-                          {rec.scheduledDate
-                            ? ` · Due ${formatShortDate(rec.scheduledDate)}`
-                            : ""}
+                          {rec.scheduledDate ? ` · Due ${formatShortDate(rec.scheduledDate)}` : ""}
                           {rec.dueOdometerKm
                             ? ` · ${rec.dueOdometerKm.toLocaleString("en-US")} km`
                             : ""}
                         </p>
                       </div>
                       <Badge
-                        variant={
-                          status === "overdue" ? "destructive" : "secondary"
-                        }
+                        variant={status === "overdue" ? "destructive" : "secondary"}
                         className={
                           status === "due_soon"
-                            ? "border-[var(--brand-amber)]/40 bg-[var(--brand-amber)]/15 text-[var(--brand-amber)]"
+                            ? "border-(--brand-amber)/40 bg-(--brand-amber)/15 text-brand-amber"
                             : ""
                         }
                       >

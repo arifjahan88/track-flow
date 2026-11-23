@@ -20,13 +20,7 @@ import { PageTransition } from "@/components/motion";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { ROLE_LABELS } from "@/lib/rbac";
@@ -51,9 +45,7 @@ const OPERATIONS_NAV: readonly NavItem[] = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
-const SYSTEM_NAV: readonly NavItem[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+const SYSTEM_NAV: readonly NavItem[] = [{ href: "/settings", label: "Settings", icon: Settings }];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -79,8 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {title}
       </p>
       {items.map((item) => {
-        const isActive =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;
         const showLiveDot = item.href === "/trips" && activeTripId !== null;
 
@@ -93,7 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               "flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isActive
                 ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
             <span className="flex items-center gap-3">
@@ -101,12 +92,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>{item.label}</span>
             </span>
             {showLiveDot ? (
-              <span
-                className="relative flex h-2.5 w-2.5"
-                aria-label="Active trip running"
-              >
-                <span className="tf-live-pulse absolute inline-flex h-full w-full rounded-full bg-[var(--brand-amber)]" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--brand-amber)]" />
+              <span className="relative flex h-2.5 w-2.5" aria-label="Active trip running">
+                <span className="tf-live-pulse absolute inline-flex h-full w-full rounded-full bg-brand-amber" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-amber" />
               </span>
             ) : null}
           </Link>
@@ -129,10 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <Separator />
 
-      <nav
-        aria-label="Primary navigation"
-        className="flex-1 space-y-5 overflow-y-auto px-3 py-4"
-      >
+      <nav aria-label="Primary navigation" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
         {renderNavGroup("Fleet", CORE_NAV)}
         {renderNavGroup("Operations", OPERATIONS_NAV)}
         {renderNavGroup("System", SYSTEM_NAV)}
@@ -147,9 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {currentUser?.name ?? "Demo Admin"}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {currentUser?.role
-                ? ROLE_LABELS[currentUser.role]
-                : "Super Admin"}
+              {currentUser?.role ? ROLE_LABELS[currentUser.role] : "Super Admin"}
             </p>
           </div>
           <ThemeToggle />
