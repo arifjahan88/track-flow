@@ -175,6 +175,7 @@ export function useLiveSimulation() {
     let rafId = 0;
     let lastTs = Date.now();
     let lastCommitTs = Date.now();
+    let lastUiFrameTs = 0;
 
     const step = () => {
       const now = Date.now();
@@ -312,7 +313,10 @@ export function useLiveSimulation() {
         };
       }
 
-      setFrames(nextFrames);
+      if (now - lastUiFrameTs >= 48) {
+        lastUiFrameTs = now;
+        setFrames(nextFrames);
+      }
 
       if (now - lastCommitTs >= 1500 && running) {
         lastCommitTs = now;

@@ -21,7 +21,11 @@ import { ThemeToggleButton } from "@/components/ui/theme-toggle";
 import { Fonts, Radius } from "@/constants/theme";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useTheme } from "@/hooks/use-theme";
-import { triggerMediumHaptic, triggerSuccessHaptic } from "@/lib/haptics";
+import {
+  triggerLightHaptic,
+  triggerMediumHaptic,
+  triggerSuccessHaptic,
+} from "@/lib/haptics";
 import { ALL_ROLES, ROLE_LABELS } from "@/lib/rbac";
 import { DEMO_ACCOUNTS, useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
@@ -60,6 +64,7 @@ export default function LoginScreen() {
   const [registerRole, setRegisterRole] = useState<UserRole>("driver");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [demoExpanded, setDemoExpanded] = useState(false);
 
   useEffect(() => {
     if (hydrated && currentUserId) {
@@ -188,124 +193,9 @@ export default function LoginScreen() {
             </Text>
           </Animated.View>
 
-          {/* 1-Click Quick Demo Launchers (Featured First for Mobile) */}
-          <Animated.View
-            entering={FadeInDown.delay(80).duration(160)}
-            style={[
-              styles.sectionCard,
-              {
-                backgroundColor: theme.card,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                1-Tap Quick Demo Accounts
-              </Text>
-              <Text
-                style={[
-                  styles.sectionCount,
-                  { color: theme.primary, fontFamily: Fonts?.mono },
-                ]}
-              >
-                5 ROLES READY
-              </Text>
-            </View>
-
-            <View style={styles.demoList}>
-              {DEMO_ACCOUNTS.map((acct) => {
-                const isPrimaryDriver = acct.role === "driver";
-                return (
-                  <Pressable
-                    key={acct.id}
-                    onPress={() =>
-                      handleQuickDemo(acct.role, acct.assignedVehicleId)
-                    }
-                    style={[
-                      styles.demoItem,
-                      {
-                        backgroundColor: isPrimaryDriver
-                          ? theme.cardElevated
-                          : theme.muted,
-                        borderColor: isPrimaryDriver
-                          ? theme.primary
-                          : theme.border,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.demoIconBox,
-                        {
-                          backgroundColor: theme.card,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={ROLE_ICON[acct.role]}
-                        size={20}
-                        color={
-                          isPrimaryDriver
-                            ? theme.primary
-                            : theme.textSecondary
-                        }
-                      />
-                    </View>
-
-                    <View style={styles.demoTextCol}>
-                      <View style={styles.demoTopLine}>
-                        <Text
-                          style={[styles.demoName, { color: theme.text }]}
-                        >
-                          {acct.name}
-                        </Text>
-                        <Badge
-                          label={
-                            isPrimaryDriver
-                              ? "PRIMARY · DRIVER"
-                              : ROLE_LABELS[acct.role]
-                          }
-                          tone={ROLE_TONE[acct.role]}
-                        />
-                      </View>
-                      <Text
-                        style={[
-                          styles.demoEmail,
-                          {
-                            color: theme.textSecondary,
-                            fontFamily: Fonts?.mono,
-                          },
-                        ]}
-                      >
-                        {acct.email} · pass: demo1234
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.demoTagline,
-                          { color: theme.textSecondary },
-                        ]}
-                      >
-                        {acct.tagline}
-                      </Text>
-                    </View>
-
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={theme.textSecondary}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Animated.View>
-
           {/* Sign In / Register Credentials Card */}
           <Animated.View
-            entering={FadeInDown.delay(120).duration(160)}
+            entering={FadeInDown.delay(80).duration(160)}
             style={[
               styles.sectionCard,
               {
@@ -479,6 +369,138 @@ export default function LoginScreen() {
               }
             />
           </Animated.View>
+
+          {/* 1-Click Quick Demo Launchers (Collapsible at bottom) */}
+          <Animated.View
+            entering={FadeInDown.delay(120).duration(160)}
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: demoExpanded }}
+              onPress={() => {
+                triggerLightHaptic();
+                setDemoExpanded((prev) => !prev);
+              }}
+              style={styles.sectionHeader}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                1-Tap Quick Demo Accounts
+              </Text>
+              <View style={styles.sectionHeaderRight}>
+                <Text
+                  style={[
+                    styles.sectionCount,
+                    { color: theme.primary, fontFamily: Fonts?.mono },
+                  ]}
+                >
+                  5 ROLES READY
+                </Text>
+                <Ionicons
+                  name={demoExpanded ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color={theme.textSecondary}
+                />
+              </View>
+            </Pressable>
+
+            {demoExpanded ? (
+              <View style={styles.demoList}>
+                {DEMO_ACCOUNTS.map((acct) => {
+                  const isPrimaryDriver = acct.role === "driver";
+                  return (
+                    <Pressable
+                      key={acct.id}
+                      onPress={() =>
+                        handleQuickDemo(acct.role, acct.assignedVehicleId)
+                      }
+                      style={[
+                        styles.demoItem,
+                        {
+                          backgroundColor: isPrimaryDriver
+                            ? theme.cardElevated
+                            : theme.muted,
+                          borderColor: isPrimaryDriver
+                            ? theme.primary
+                            : theme.border,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.demoIconBox,
+                          {
+                            backgroundColor: theme.card,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={ROLE_ICON[acct.role]}
+                          size={20}
+                          color={
+                            isPrimaryDriver
+                              ? theme.primary
+                              : theme.textSecondary
+                          }
+                        />
+                      </View>
+
+                      <View style={styles.demoTextCol}>
+                        <View style={styles.demoTopLine}>
+                          <Text
+                            style={[styles.demoName, { color: theme.text }]}
+                          >
+                            {acct.name}
+                          </Text>
+                          <Badge
+                            label={
+                              isPrimaryDriver
+                                ? "PRIMARY · DRIVER"
+                                : ROLE_LABELS[acct.role]
+                            }
+                            tone={ROLE_TONE[acct.role]}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.demoEmail,
+                            {
+                              color: theme.textSecondary,
+                              fontFamily: Fonts?.mono,
+                            },
+                          ]}
+                        >
+                          {acct.email} · pass: demo1234
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.demoTagline,
+                            { color: theme.textSecondary },
+                          ]}
+                        >
+                          {acct.tagline}
+                        </Text>
+                      </View>
+
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={theme.textSecondary}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -568,6 +590,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  sectionHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   sectionTitle: {
     fontSize: 14,

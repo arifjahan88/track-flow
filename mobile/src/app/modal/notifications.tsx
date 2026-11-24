@@ -4,12 +4,12 @@ import dayjs from "dayjs";
 import { router } from "expo-router";
 import {
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { AnimatedCard } from "@/components/ui/animated-card";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -134,7 +134,7 @@ export default function NotificationsScreen() {
         </Pressable>
       </View>
 
-      {/* Filter Tabs + Quick Actions Bar */}
+      {/* Filter Tabs */}
       <View style={styles.topControlSection}>
         <SegmentedControl
           options={[
@@ -146,26 +146,6 @@ export default function NotificationsScreen() {
           value={filter}
           onChange={(next) => setFilter(next)}
         />
-
-        <View style={styles.actionRow}>
-          <Button
-            label="Mark All as Read"
-            variant="secondary"
-            size="sm"
-            disabled={unreadCount === 0}
-            icon={
-              <Ionicons
-                name="checkmark-done"
-                size={14}
-                color={unreadCount === 0 ? theme.textSecondary : theme.text}
-              />
-            }
-            onPress={() => {
-              triggerLightHaptic();
-              markAllAlertsRead();
-            }}
-          />
-        </View>
       </View>
 
       {/* Notification Stream */}
@@ -372,6 +352,34 @@ export default function NotificationsScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Sticky Bottom Action Footer */}
+      <View
+        style={[
+          styles.footer,
+          { backgroundColor: theme.background, borderTopColor: theme.border },
+        ]}
+      >
+        <Button
+          label={
+            unreadCount > 0 ? `Mark All as Read (${unreadCount})` : "All Caught Up"
+          }
+          variant="secondary"
+          size="md"
+          disabled={unreadCount === 0}
+          icon={
+            <Ionicons
+              name="checkmark-done"
+              size={16}
+              color={unreadCount === 0 ? theme.textSecondary : theme.text}
+            />
+          }
+          onPress={() => {
+            triggerLightHaptic();
+            markAllAlertsRead();
+          }}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -416,10 +424,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     gap: 10,
   },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
   },
   scrollContent: {
     padding: 16,

@@ -56,6 +56,7 @@ export function RealFleetMap({
 }: RealFleetMapProps) {
   const theme = useTheme();
   const mapRef = useRef<MapView | null>(null);
+  const lastCameraUpdateRef = useRef(0);
 
   const selectedVehicle =
     vehicles.find((v) => v.id === selectedVehicleId) ?? vehicles[0];
@@ -65,8 +66,15 @@ export function RealFleetMap({
   const selectedRoute = getRouteById(selectedVehicle?.routeId);
   const fullRouteCoords = getRouteCoordsForRegion(selectedRoute, cityRegion);
 
-  // When cityRegion or fitTrigger changes, animate camera to the region center
+  // When cityRegion or fitTrigger changes, frame the full road corridor cleanly
   useEffect(() => {
+    if (fullRouteCoords.length >= 2) {
+      mapRef.current?.fitToCoordinates(fullRouteCoords, {
+        edgePadding: { top: 110, right: 44, bottom: 260, left: 44 },
+        animated: true,
+      });
+      return;
+    }
     const center = REGION_CENTERS[cityRegion];
     const nextRegion: Region = {
       latitude: center.latitude,
@@ -75,11 +83,15 @@ export function RealFleetMap({
       longitudeDelta: center.longitudeDelta,
     };
     mapRef.current?.animateToRegion(nextRegion, 650);
-  }, [cityRegion, fitTrigger]);
+  }, [cityRegion, fitTrigger, fullRouteCoords.length]);
 
-  // Smooth camera lock following the selected moving vehicle
+  // Smoothly throttled camera lock following the selected moving vehicle
   useEffect(() => {
     if (!followCamera || !selectedFrame) return;
+    const now = Date.now();
+    if (now - lastCameraUpdateRef.current < 550) return;
+    lastCameraUpdateRef.current = now;
+
     mapRef.current?.animateCamera(
       {
         center: {
@@ -87,13 +99,12 @@ export function RealFleetMap({
           longitude: selectedFrame.longitude,
         },
       },
-      { duration: 750 }
+      { duration: 520 }
     );
   }, [
     followCamera,
     selectedFrame?.latitude,
     selectedFrame?.longitude,
-    selectedFrame,
   ]);
 
   const initialCenter = REGION_CENTERS[cityRegion];
@@ -141,36 +152,50 @@ export function RealFleetMap({
               })
           : null}
 
-        {/* Full Background Corridor Track */}
+        {/* Full Background Road Corridor Bed */}
         {fullRouteCoords.length >= 2 ? (
           <Polyline
             coordinates={fullRouteCoords}
             strokeColor={
               theme.isDark
-                ? "rgba(130, 163, 184, 0.25)"
-                : "rgba(70, 99, 120, 0.28)"
+                ? "rgba(34, 211, 238, 0.16)"
+                : "rgba(8, 145, 178, 0.22)"
             }
-            strokeWidth={4}
+            strokeWidth={7}
+            lineCap="round"
+            lineJoin="round"
           />
         ) : null}
 
-        {/* Covered Route Path (Solid Glowing Cyan / Route Color) */}
+        {/* Covered Route Trail Behind Vehicle */}
         {selectedFrame && selectedFrame.coveredCoords.length >= 2 ? (
           <Polyline
             coordinates={selectedFrame.coveredCoords}
-            strokeColor={selectedRoute.color}
+            strokeColor="rgba(8, 145, 178, 0.38)"
             strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
           />
         ) : null}
 
-        {/* Remaining Route Path (Dashed Navigation Line) */}
+        {/* Remaining Active Road Ahead (Dual-Layer Casing + Bright Cyan Navigation Line) */}
         {selectedFrame && selectedFrame.remainingCoords.length >= 2 ? (
-          <Polyline
-            coordinates={selectedFrame.remainingCoords}
-            strokeColor={theme.primary}
-            strokeWidth={4}
-            lineDashPattern={[10, 6]}
-          />
+          <>
+            <Polyline
+              coordinates={selectedFrame.remainingCoords}
+              strokeColor="#0E7490"
+              strokeWidth={9}
+              lineCap="round"
+              lineJoin="round"
+            />
+            <Polyline
+              coordinates={selectedFrame.remainingCoords}
+              strokeColor={theme.isDark ? "#22D3EE" : "#0891B2"}
+              strokeWidth={5.5}
+              lineCap="round"
+              lineJoin="round"
+            />
+          </>
         ) : null}
 
         {/* Active Trip Delivery Waypoint Stop Pins */}
@@ -242,6 +267,7 @@ export function RealFleetMap({
               coordinate={{ latitude: lat, longitude: lng }}
               onPress={() => onSelectVehicle(v.id)}
               anchor={{ x: 0.5, y: 0.5 }}
+              flat
             >
               <View style={styles.markerWrapper}>
                 {/* Floating License Plate & Speed Pill */}

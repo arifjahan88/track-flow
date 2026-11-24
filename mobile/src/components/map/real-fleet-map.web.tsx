@@ -116,38 +116,52 @@ export function RealFleetMap({
               ))
           : null}
 
-        {/* Full Corridor Path */}
+        {/* Full Corridor Road Bed */}
         <Polyline
           points={toPolyString(selectedRoute.waypoints)}
           fill="none"
           stroke={
             theme.isDark
-              ? "rgba(130, 163, 184, 0.25)"
-              : "rgba(70, 99, 120, 0.25)"
+              ? "rgba(34, 211, 238, 0.16)"
+              : "rgba(8, 145, 178, 0.22)"
           }
-          strokeWidth={5}
+          strokeWidth={7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
 
-        {/* Covered Path */}
+        {/* Covered Trail */}
         {selectedFrame && selectedFrame.coveredPoints.length >= 2 ? (
           <Polyline
             points={toPolyString(selectedFrame.coveredPoints)}
             fill="none"
-            stroke={selectedRoute.color}
-            strokeWidth={6}
+            stroke="rgba(8, 145, 178, 0.42)"
+            strokeWidth={5}
             strokeLinecap="round"
+            strokeLinejoin="round"
           />
         ) : null}
 
-        {/* Remaining Path */}
+        {/* Remaining Active Road Line (Dual-Layer Casing + Bright Cyan Line) */}
         {selectedFrame && selectedFrame.remainingPoints.length >= 2 ? (
-          <Polyline
-            points={toPolyString(selectedFrame.remainingPoints)}
-            fill="none"
-            stroke={theme.primary}
-            strokeWidth={4}
-            strokeDasharray="10 6"
-          />
+          <>
+            <Polyline
+              points={toPolyString(selectedFrame.remainingPoints)}
+              fill="none"
+              stroke="#0E7490"
+              strokeWidth={9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <Polyline
+              points={toPolyString(selectedFrame.remainingPoints)}
+              fill="none"
+              stroke={theme.isDark ? "#22D3EE" : "#0891B2"}
+              strokeWidth={5.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
         ) : null}
 
         {/* Vehicle Markers */}
