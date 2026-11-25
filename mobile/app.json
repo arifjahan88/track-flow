@@ -14,7 +14,8 @@
         "NSLocationWhenInUseUsageDescription": "TrackFlow uses your location to display your vehicle on the live navigation map and record trip telemetry.",
         "NSCameraUsageDescription": "TrackFlow uses your camera to capture walkaround inspection photos, fuel receipts, and delivery proofs.",
         "NSPhotoLibraryUsageDescription": "TrackFlow accesses your photo library to attach inspection photos, fuel receipts, and delivery proofs."
-      }
+      },
+      "bundleIdentifier": "com.arif-jahan.trackflowmobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +30,8 @@
         "CAMERA",
         "READ_EXTERNAL_STORAGE"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.arif_jahan.trackflowmobile"
     },
     "web": {
       "output": "single",
