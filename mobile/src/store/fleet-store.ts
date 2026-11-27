@@ -32,6 +32,7 @@ import type {
 } from "@/types";
 import { haversineKm, isUsefulPoint } from "@/lib/geo";
 import { evaluateGeofenceTransitions } from "@/lib/geofence";
+import { checkDriverAvailability } from "@/lib/drivers";
 import { getRouteById } from "@/lib/city-routes";
 import { interpolateRoutePosition } from "@/lib/geo-sim";
 import { createId } from "@/lib/id";
@@ -195,10 +196,30 @@ export interface FleetState extends FleetDataSnapshot {
   addBooking: (
     input: Omit<TripBooking, "id" | "status" | "createdAt">
   ) => TripBooking;
+  assignBooking: (
+    id: string,
+    assignment: {
+      vehicleId: string;
+      driverId: string;
+      notes?: string;
+      allowQueuedDriver?: boolean;
+    }
+  ) => ActionResult;
+  rejectBooking: (id: string, reason?: string) => void;
+  startAssignedBooking: (
+    bookingId: string,
+    preTripChecklist?: TripChecklist
+  ) => ActionResult;
   updateBookingStatus: (
     id: string,
     status: TripBooking["status"],
-    updates?: { vehicleId?: string; driverId?: string; approvedBy?: string }
+    updates?: {
+      vehicleId?: string;
+      driverId?: string;
+      approvedBy?: string;
+      assignedBy?: string;
+      rejectionReason?: string;
+    }
   ) => void;
   removeBooking: (id: string) => void;
 
@@ -596,10 +617,29 @@ export const useFleetStore = create<FleetState>()(
           bookings: options?.bookingId
             ? state.bookings.map((b) =>
                 b.id === options.bookingId
-                  ? { ...b, status: "dispatched" }
+                  ? {
+                      ...b,
+                      status: "in_progress" as const,
+                      startedAt: newTrip.startedAt,
+                      tripId: newTrip.id,
+                    }
                   : b
               )
             : state.bookings,
+          alerts: [
+            {
+              id: createId("alert"),
+              severity: "info" as const,
+              title: options?.bookingId
+                ? "Driver Started Assigned Trip"
+                : "Trip Started",
+              message: `${vehicle.name} (${vehicle.plate}) departed on "${newTrip.purpose}".`,
+              vehicleId,
+              timestamp: Date.now(),
+              read: false,
+            },
+            ...state.alerts,
+          ].slice(0, 60),
           auditLogs: [
             makeAudit(
               "trip.started",
@@ -795,21 +835,39 @@ export const useFleetStore = create<FleetState>()(
       },
 
       addBooking: (input) => {
+        const now = Date.now();
+        const actor = getCurrentActor();
         const booking: TripBooking = {
           ...input,
           id: createId("book"),
+          requesterUserId: input.requesterUserId ?? actor.actorId,
           requesterName: input.requesterName.trim(),
           purpose: input.purpose.trim(),
+          pickupLocation:
+            input.pickupLocation?.trim() || "Gulshan-2 Central Logistics Hub",
+          dropoffLocation:
+            input.dropoffLocation?.trim() || input.purpose.trim(),
           status: "pending",
-          createdAt: new Date().toISOString(),
+          createdAt: new Date(now).toISOString(),
         };
         set((state) => ({
           bookings: [booking, ...state.bookings],
+          alerts: [
+            {
+              id: createId("alert"),
+              severity: "warning" as const,
+              title: "New Trip Request — Pending Assignment",
+              message: `${booking.requesterName} requested "${booking.purpose}" (${booking.pickupLocation} → ${booking.dropoffLocation}).`,
+              timestamp: now,
+              read: false,
+            },
+            ...state.alerts,
+          ].slice(0, 60),
           auditLogs: [
             makeAudit(
               "booking.created",
               "booking",
-              `Created trip booking "${booking.purpose}" (${booking.requesterName})`,
+              `Created trip request "${booking.purpose}" (${booking.requesterName})`,
               booking.id
             ),
             ...state.auditLogs,
@@ -818,8 +876,184 @@ export const useFleetStore = create<FleetState>()(
         return booking;
       },
 
+      assignBooking: (id, assignment) => {
+        const { bookings, vehicles, drivers, trips } = get();
+        const booking = bookings.find((b) => b.id === id);
+        if (!booking) return { ok: false, error: "Trip request not found." };
+        if (booking.status === "in_progress" || booking.status === "completed") {
+          return {
+            ok: false,
+            error: "Cannot reassign a trip already in progress or completed.",
+          };
+        }
+        const vehicle = vehicles.find((v) => v.id === assignment.vehicleId);
+        if (!vehicle) return { ok: false, error: "Select a valid vehicle." };
+        if (
+          vehicle.status === "under_maintenance" ||
+          vehicle.status === "out_of_service" ||
+          vehicle.status === "decommissioned"
+        ) {
+          return {
+            ok: false,
+            error: `${vehicle.name} is unavailable (${vehicle.status.replaceAll("_", " ")}).`,
+          };
+        }
+        const driver = drivers.find((d) => d.id === assignment.driverId);
+        if (!driver) return { ok: false, error: "Select a valid driver." };
+
+        const targetDay = booking.requestedDate.slice(0, 10);
+        const onLeave = (driver.leaveLogs ?? []).find(
+          (l) => targetDay >= l.fromDate && targetDay <= l.toDate
+        );
+        if (onLeave) {
+          return {
+            ok: false,
+            error: `${driver.name} is on leave (${onLeave.reason}).`,
+          };
+        }
+        if (!assignment.allowQueuedDriver) {
+          const avail = checkDriverAvailability(
+            driver,
+            booking.requestedDate,
+            trips
+          );
+          if (!avail.available) {
+            return {
+              ok: false,
+              error: `${driver.name} conflict: ${avail.reason}`,
+            };
+          }
+        }
+
+        const actor = getCurrentActor();
+        const now = Date.now();
+        const assignedAt = new Date(now).toISOString();
+
+        set((state) => ({
+          bookings: state.bookings.map((b) =>
+            b.id === id
+              ? {
+                  ...b,
+                  status: "assigned" as const,
+                  vehicleId: vehicle.id,
+                  driverId: driver.id,
+                  approvedBy: actor.actorName,
+                  assignedBy: actor.actorName,
+                  assignedAt,
+                  rejectionReason: undefined,
+                  notes: assignment.notes?.trim() || b.notes,
+                }
+              : b
+          ),
+          alerts: [
+            {
+              id: createId("alert"),
+              severity: "info" as const,
+              title: "Driver Assigned to Trip",
+              message: `${actor.actorName} assigned ${driver.name} (${vehicle.name} · ${vehicle.plate}) to "${booking.purpose}".`,
+              vehicleId: vehicle.id,
+              timestamp: now,
+              read: false,
+            },
+            ...state.alerts,
+          ].slice(0, 60),
+          auditLogs: [
+            makeAudit(
+              "booking.assigned",
+              "booking",
+              `Assigned ${driver.name} & ${vehicle.name} to "${booking.purpose}"`,
+              id
+            ),
+            ...state.auditLogs,
+          ].slice(0, 250),
+        }));
+        return { ok: true };
+      },
+
+      rejectBooking: (id, reason) => {
+        const booking = get().bookings.find((b) => b.id === id);
+        const actor = getCurrentActor();
+        const now = Date.now();
+        set((state) => ({
+          bookings: state.bookings.map((b) =>
+            b.id === id
+              ? {
+                  ...b,
+                  status: "rejected" as const,
+                  rejectionReason: reason?.trim() || "Declined by dispatcher",
+                }
+              : b
+          ),
+          alerts: booking
+            ? [
+                {
+                  id: createId("alert"),
+                  severity: "warning" as const,
+                  title: "Trip Request Rejected",
+                  message: `${actor.actorName} rejected "${booking.purpose}".`,
+                  timestamp: now,
+                  read: false,
+                },
+                ...state.alerts,
+              ].slice(0, 60)
+            : state.alerts,
+          auditLogs: [
+            makeAudit(
+              "booking.rejected",
+              "booking",
+              `Rejected booking "${booking?.purpose ?? id}"`,
+              id
+            ),
+            ...state.auditLogs,
+          ].slice(0, 250),
+        }));
+      },
+
+      startAssignedBooking: (bookingId, preTripChecklist) => {
+        const { bookings, vehicles } = get();
+        const booking = bookings.find((b) => b.id === bookingId);
+        if (!booking) return { ok: false, error: "Trip booking not found." };
+        if (booking.status !== "assigned") {
+          return {
+            ok: false,
+            error: "Only assigned bookings can be started by the driver.",
+          };
+        }
+        if (!booking.vehicleId || !booking.driverId) {
+          return {
+            ok: false,
+            error: "Admin must assign a driver and vehicle first.",
+          };
+        }
+        const vehicle = vehicles.find((v) => v.id === booking.vehicleId);
+        if (!vehicle) return { ok: false, error: "Assigned vehicle not found." };
+        const route = getRouteById(vehicle.routeId);
+        const destCoord =
+          route.dhakaCoords[Math.max(0, route.dhakaCoords.length - 2)];
+        const waypoints: TripWaypoint[] = [
+          {
+            id: createId("wp"),
+            label: booking.dropoffLocation || booking.purpose,
+            address: booking.dropoffLocation || route.name,
+            lat: destCoord?.latitude ?? 23.775,
+            lng: destCoord?.longitude ?? 90.414,
+          },
+        ];
+        return get().startTrip(
+          booking.vehicleId,
+          booking.purpose,
+          booking.driverId,
+          {
+            bookingId: booking.id,
+            preTripChecklist,
+            waypoints,
+          }
+        );
+      },
+
       updateBookingStatus: (id, status, updates) => {
         const booking = get().bookings.find((b) => b.id === id);
+        const actor = getCurrentActor();
         set((state) => ({
           bookings: state.bookings.map((b) =>
             b.id === id
@@ -828,7 +1062,20 @@ export const useFleetStore = create<FleetState>()(
                   status,
                   vehicleId: updates?.vehicleId ?? b.vehicleId,
                   driverId: updates?.driverId ?? b.driverId,
-                  approvedBy: updates?.approvedBy ?? b.approvedBy,
+                  approvedBy:
+                    status === "assigned"
+                      ? updates?.approvedBy ?? actor.actorName
+                      : b.approvedBy,
+                  assignedBy:
+                    status === "assigned"
+                      ? updates?.assignedBy ?? actor.actorName
+                      : b.assignedBy,
+                  assignedAt:
+                    status === "assigned"
+                      ? b.assignedAt ?? new Date().toISOString()
+                      : b.assignedAt,
+                  rejectionReason:
+                    updates?.rejectionReason ?? b.rejectionReason,
                 }
               : b
           ),
@@ -1208,8 +1455,12 @@ export const useFleetStore = create<FleetState>()(
       },
 
       endActiveTripForVehicle: (vehicleId, postTripChecklist) => {
-        const nowIso = new Date().toISOString();
+        const now = Date.now();
+        const nowIso = new Date(now).toISOString();
         const vehicle = get().vehicles.find((v) => v.id === vehicleId);
+        const finishingTrip = get().trips.find(
+          (t) => t.vehicleId === vehicleId && t.status !== "done"
+        );
         set((state) => {
           const updatedTrips = state.trips.map((t) =>
             t.vehicleId === vehicleId && t.status !== "done"
@@ -1224,6 +1475,7 @@ export const useFleetStore = create<FleetState>()(
               : t
           );
           const nextActive = updatedTrips.find((t) => t.status === "active");
+          const linkedBookingId = finishingTrip?.bookingId;
           return {
             trips: updatedTrips,
             activeTripId: nextActive?.id ?? null,
@@ -1238,12 +1490,36 @@ export const useFleetStore = create<FleetState>()(
                   }
                 : v
             ),
+            bookings: linkedBookingId
+              ? state.bookings.map((b) =>
+                  b.id === linkedBookingId
+                    ? {
+                        ...b,
+                        status: "completed" as const,
+                        completedAt: nowIso,
+                        tripId: finishingTrip?.id ?? b.tripId,
+                      }
+                    : b
+                )
+              : state.bookings,
+            alerts: [
+              {
+                id: createId("alert"),
+                severity: "info" as const,
+                title: "Trip Completed",
+                message: `${vehicle?.name ?? "Vehicle"} finished "${finishingTrip?.purpose ?? "corridor run"}" and returned to standby.`,
+                vehicleId,
+                timestamp: now,
+                read: false,
+              },
+              ...state.alerts,
+            ].slice(0, 60),
             auditLogs: [
               makeAudit(
                 "trip.completed",
                 "trip",
                 `Completed active trip for ${vehicle?.name ?? vehicleId}`,
-                vehicleId
+                finishingTrip?.id ?? vehicleId
               ),
               ...state.auditLogs,
             ].slice(0, 250),
@@ -1376,8 +1652,46 @@ export const useFleetStore = create<FleetState>()(
     }),
     {
       name: "tf-mobile-fleet",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => safeStateStorage),
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Partial<FleetDataSnapshot>;
+        const rawBookings = Array.isArray(state.bookings)
+          ? (state.bookings as unknown as Array<Record<string, unknown>>).map(
+              (raw) => {
+                const s = String(raw.status ?? "pending");
+                const status: TripBooking["status"] =
+                  s === "approved"
+                    ? "assigned"
+                    : s === "dispatched"
+                      ? "in_progress"
+                      : s === "assigned" ||
+                          s === "in_progress" ||
+                          s === "completed" ||
+                          s === "rejected"
+                        ? (s as TripBooking["status"])
+                        : "pending";
+                return {
+                  ...(raw as unknown as TripBooking),
+                  status,
+                  pickupLocation:
+                    typeof raw.pickupLocation === "string"
+                      ? raw.pickupLocation
+                      : "Gulshan-2 Central Logistics Hub",
+                  dropoffLocation:
+                    typeof raw.dropoffLocation === "string"
+                      ? raw.dropoffLocation
+                      : String(raw.purpose ?? "Destination"),
+                };
+              }
+            )
+          : createSeedBookings();
+        return {
+          ...getInitialSnapshot(),
+          ...state,
+          bookings: rawBookings,
+        };
+      },
     }
   )
 );

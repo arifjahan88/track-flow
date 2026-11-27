@@ -5,7 +5,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Fonts } from "@/constants/theme";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { useTheme } from "@/hooks/use-theme";
+import { canSeeMobileTab } from "@/lib/rbac";
 import { useAuthStore } from "@/store/auth-store";
+
+export const unstable_settings = {
+  initialRouteName: "dashboard",
+};
 
 export default function TabsLayout() {
   const theme = useTheme();
@@ -45,11 +50,31 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: role === "employee" ? "My Trips" : "Home",
+          href: canSeeMobileTab(role, "dashboard") ? undefined : null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="grid" size={size} color={String(color)} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
-          title: role === "driver" ? "Drive Map" : "Live Map",
+          title:
+            role === "driver"
+              ? "Drive Map"
+              : role === "employee"
+                ? "Live Track"
+                : "Live Map",
+          href: canSeeMobileTab(role, "index") ? undefined : null,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="navigate-circle" size={size} color={String(color)} />
+            <Ionicons
+              name="navigate-circle"
+              size={size}
+              color={String(color)}
+            />
           ),
         }}
       />
@@ -57,6 +82,7 @@ export default function TabsLayout() {
         name="trips"
         options={{
           title: role === "dispatcher" ? "Dispatch" : "Trips",
+          href: canSeeMobileTab(role, "trips") ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="compass" size={size} color={String(color)} />
           ),
@@ -66,6 +92,7 @@ export default function TabsLayout() {
         name="logs"
         options={{
           title: role === "mechanic" ? "Service Bay" : "Field Logs",
+          href: canSeeMobileTab(role, "logs") ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name={role === "mechanic" ? "construct" : "receipt"}
@@ -79,6 +106,7 @@ export default function TabsLayout() {
         name="fleet"
         options={{
           title: "Fleet Hub",
+          href: canSeeMobileTab(role, "fleet") ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bus" size={size} color={String(color)} />
           ),
@@ -88,6 +116,7 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
+          href: canSeeMobileTab(role, "profile") ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-circle" size={size} color={String(color)} />
           ),

@@ -16,7 +16,16 @@ export const SEED_USERS: User[] = [
     passwordHash: DEMO_PASSWORD_HASH,
     role: "driver",
     assignedVehicleId: "veh-1",
+    driverId: "drv-1",
     createdAt: "2026-01-15T00:00:00.000Z",
+  },
+  {
+    id: "user-employee",
+    name: "Nadia Karim",
+    email: "user@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "employee",
+    createdAt: "2026-01-20T00:00:00.000Z",
   },
   {
     id: "user-dispatcher",
@@ -65,15 +74,22 @@ export const DEMO_ACCOUNTS: Array<{
     name: "Marcus Vance",
     email: "driver@demo.com",
     role: "driver",
-    tagline: "Primary Mobile Cockpit · Atlas Hauler 01 (FP-8421)",
+    tagline: "Primary Driver Cockpit · Atlas Hauler 01 (FP-8421)",
     assignedVehicleId: "veh-1",
+  },
+  {
+    id: "user-employee",
+    name: "Nadia Karim",
+    email: "user@demo.com",
+    role: "employee",
+    tagline: "Request trips & track assigned driver live",
   },
   {
     id: "user-dispatcher",
     name: "Sarah Chen",
     email: "dispatch@demo.com",
     role: "dispatcher",
-    tagline: "Live GPS multi-vehicle radar, bookings & dispatch",
+    tagline: "Assign drivers, live GPS radar & bookings queue",
   },
   {
     id: "user-fleet-manager",
@@ -130,6 +146,7 @@ function normalizeUsers(rawUsers: unknown): User[] {
       passwordHash: u.passwordHash ?? DEMO_PASSWORD_HASH,
       role: (u.role ?? seedMatch?.role ?? "driver") as UserRole,
       assignedVehicleId: u.assignedVehicleId ?? seedMatch?.assignedVehicleId,
+      driverId: u.driverId ?? seedMatch?.driverId,
       createdAt: u.createdAt ?? "2026-01-01T00:00:00.000Z",
     };
   });
@@ -249,7 +266,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "tf-mobile-auth",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => safeStateStorage),
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Partial<AuthState>;

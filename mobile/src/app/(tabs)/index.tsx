@@ -8,6 +8,8 @@ import { RealFleetMap } from "@/components/map/real-fleet-map";
 import { SpeedCompassHud } from "@/components/map/speed-compass-hud";
 import { useLiveSimulation } from "@/hooks/use-live-simulation";
 import { useTheme } from "@/hooks/use-theme";
+import { can } from "@/lib/rbac";
+import { getScopedTrips, getScopedVehicles } from "@/lib/rbac-scope";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
@@ -24,9 +26,10 @@ export default function MapCockpitScreen() {
 
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const allVehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
-  const trips = useFleetStore((s) => s.trips);
+  const allTrips = useFleetStore((s) => s.trips);
+  const bookings = useFleetStore((s) => s.bookings);
   const vectorGeofences = useFleetStore((s) => s.vectorGeofences);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const isSimulating = useFleetStore((s) => s.isSimulating);
@@ -48,6 +51,17 @@ export default function MapCockpitScreen() {
 
   const currentUser = users.find((u) => u.id === currentUserId);
   const activeRole = currentUser?.role ?? "driver";
+  const canManageGeofences = can(activeRole, "geofences:write");
+
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, allTrips),
+    [currentUser, drivers, allVehicles, bookings, allTrips]
+  );
+  const trips = useMemo(
+    () => getScopedTrips(currentUser, drivers, allTrips, bookings),
+    [currentUser, drivers, allTrips, bookings]
+  );
 
   // Automatically select the driver's assigned vehicle when signed in as Driver
   useEffect(() => {
@@ -98,8 +112,8 @@ export default function MapCockpitScreen() {
       <RealFleetMap
         vehicles={vehicles}
         frames={frames}
-        geofences={vectorGeofences}
-        showGeofences={showGeofences}
+        geofences={canManageGeofences ? vectorGeofences : []}
+        showGeofences={canManageGeofences && showGeofences}
         selectedVehicleId={effectiveSelectedId}
         onSelectVehicle={(id) => {
           setSelectedVehicle(id);

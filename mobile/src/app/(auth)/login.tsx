@@ -33,6 +33,7 @@ import type { UserRole } from "@/types";
 
 const ROLE_ICON: Record<UserRole, keyof typeof Ionicons.glyphMap> = {
   driver: "navigate-circle",
+  employee: "person",
   dispatcher: "radio",
   fleet_manager: "briefcase",
   mechanic: "construct",
@@ -41,6 +42,7 @@ const ROLE_ICON: Record<UserRole, keyof typeof Ionicons.glyphMap> = {
 
 const ROLE_TONE: Record<UserRole, BadgeTone> = {
   driver: "primary",
+  employee: "primary",
   dispatcher: "neutral",
   fleet_manager: "neutral",
   mechanic: "neutral",
@@ -68,7 +70,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (hydrated && currentUserId) {
-      router.replace("/(tabs)");
+      router.replace("/(tabs)/dashboard");
     }
   }, [hydrated, currentUserId]);
 
@@ -86,7 +88,7 @@ export default function LoginScreen() {
       return;
     }
     triggerSuccessHaptic();
-    router.replace("/(tabs)");
+    router.replace("/(tabs)/dashboard");
   };
 
   const handleQuickDemo = (role: UserRole, assignedVehicleId?: string) => {
@@ -96,7 +98,7 @@ export default function LoginScreen() {
       setSelectedVehicle(assignedVehicleId);
     }
     loginAsDemo(role);
-    router.replace("/(tabs)");
+    router.replace("/(tabs)/dashboard");
   };
 
   return (
@@ -400,7 +402,7 @@ export default function LoginScreen() {
                     { color: theme.primary, fontFamily: Fonts?.mono },
                   ]}
                 >
-                  5 ROLES READY
+                  6 ROLES READY
                 </Text>
                 <Ionicons
                   name={demoExpanded ? "chevron-up" : "chevron-down"}

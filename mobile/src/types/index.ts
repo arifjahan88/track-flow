@@ -20,7 +20,8 @@ export type UserRole =
   | "fleet_manager"
   | "dispatcher"
   | "mechanic"
-  | "driver";
+  | "driver"
+  | "employee";
 
 export type ThemePreference = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
@@ -35,6 +36,7 @@ export interface User {
   passwordHash: string;
   role: UserRole;
   assignedVehicleId?: string;
+  driverId?: string;
   createdAt: string;
 }
 
@@ -282,19 +284,35 @@ export interface Trip {
   safetyMetrics?: TripSafetyMetrics;
 }
 
-export type BookingStatus = "pending" | "approved" | "rejected" | "dispatched";
+export type BookingStatus =
+  | "pending"
+  | "assigned"
+  | "in_progress"
+  | "completed"
+  | "rejected";
 
 export interface TripBooking {
   id: string;
+  requesterUserId?: string;
   requesterName: string;
   department?: string;
   purpose: string;
+  pickupLocation?: string;
+  dropoffLocation?: string;
   requestedDate: string;
+  requestedTime?: string;
+  passengerCount?: number;
   estimatedKm: number;
   vehicleId?: string;
   driverId?: string;
   status: BookingStatus;
   approvedBy?: string;
+  assignedBy?: string;
+  assignedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  tripId?: string;
+  rejectionReason?: string;
   notes?: string;
   createdAt: string;
 }

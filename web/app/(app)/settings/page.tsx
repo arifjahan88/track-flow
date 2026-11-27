@@ -208,28 +208,48 @@ export default function SettingsPage() {
         </Badge>
       </div>
 
-      <Tabs defaultValue="rbac" className="space-y-5">
-        <TabsList className="grid w-full grid-cols-3 rounded-xl sm:max-w-lg">
-          <TabsTrigger value="rbac" className="rounded-lg">
-            <Shield className="mr-1.5 h-3.5 w-3.5" />
-            RBAC &amp; Roles
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="rounded-lg">
-            <History className="mr-1.5 h-3.5 w-3.5" />
-            Audit Log ({auditLogs.length})
-          </TabsTrigger>
+      <Tabs
+        key={currentRole}
+        defaultValue={canManageRbac ? "rbac" : canViewAudit ? "audit" : "general"}
+        className="space-y-5"
+      >
+        <TabsList
+          className={`grid w-full rounded-xl sm:max-w-lg ${
+            canManageRbac && canViewAudit
+              ? "grid-cols-3"
+              : canManageRbac || canViewAudit
+                ? "grid-cols-2"
+                : "grid-cols-1 sm:max-w-xs"
+          }`}
+        >
+          {canManageRbac ? (
+            <TabsTrigger value="rbac" className="rounded-lg">
+              <Shield className="mr-1.5 h-3.5 w-3.5" />
+              RBAC &amp; Roles
+            </TabsTrigger>
+          ) : null}
+          {canViewAudit ? (
+            <TabsTrigger value="audit" className="rounded-lg">
+              <History className="mr-1.5 h-3.5 w-3.5" />
+              Audit Log ({auditLogs.length})
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="general" className="rounded-lg">
-            General &amp; Data
+            {canManageRbac || canViewAudit ? "General & Data" : "Appearance & Account"}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="rbac">
-          <RbacTab currentRole={currentRole} canManageRbac={canManageRbac} />
-        </TabsContent>
+        {canManageRbac ? (
+          <TabsContent value="rbac">
+            <RbacTab currentRole={currentRole} canManageRbac={canManageRbac} />
+          </TabsContent>
+        ) : null}
 
-        <TabsContent value="audit">
-          <AuditLogTab canViewAudit={canViewAudit} />
-        </TabsContent>
+        {canViewAudit ? (
+          <TabsContent value="audit">
+            <AuditLogTab canViewAudit={canViewAudit} />
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="general" className="space-y-5">
           <Card className="rounded-2xl">
@@ -289,6 +309,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {canManageRbac || canViewAudit ? (
           <Card className="rounded-2xl">
             <CardHeader>
               <CardTitle className="text-lg">Local data management</CardTitle>
@@ -374,6 +395,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          ) : null}
         </TabsContent>
       </Tabs>
 

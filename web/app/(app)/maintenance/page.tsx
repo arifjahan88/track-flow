@@ -14,21 +14,39 @@ import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { getMaintenanceStatus } from "@/lib/maintenance";
 import { can } from "@/lib/rbac";
+import { getScopedIncidents } from "@/lib/rbac-scope";
 
 export default function MaintenancePage() {
   const hydrated = useHydrated();
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const currentRole = users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const currentRole = currentUser?.role ?? "super_admin";
 
   const canWriteMaint = can(currentRole, "maintenance:write");
   const canWriteWorkOrders = can(currentRole, "work_orders:write");
   const canWriteIncidents = can(currentRole, "incidents:write");
+  const isDriverOnly = currentRole === "driver";
 
   const vehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
   const records = useFleetStore((s) => s.maintenanceRecords);
   const workOrders = useFleetStore((s) => s.workOrders);
-  const incidents = useFleetStore((s) => s.incidents);
+  const allIncidents = useFleetStore((s) => s.incidents);
+  const incidents = useMemo(
+    () =>
+      getScopedIncidents(
+        currentUser,
+        drivers,
+        vehicles,
+        bookings,
+        trips,
+        allIncidents
+      ),
+    [currentUser, drivers, vehicles, bookings, trips, allIncidents]
+  );
 
   const vehiclesById = useMemo(() => new Map(vehicles.map((v) => [v.id, v])), [vehicles]);
 
@@ -65,14 +83,21 @@ export default function MaintenancePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-          Maintenance, Work Orders &amp; Incidents
+          {isDriverOnly
+            ? "My Roadside Incidents & SOS Reports"
+            : "Maintenance, Work Orders & Incidents"}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Preventive rules (odometer, engine hours, calendar), corrective work orders &amp; vendor
-          parts, and accident reporting.
+          {isDriverOnly
+            ? "Report roadside breakdowns, collisions, or damage for your assigned vehicle."
+            : "Preventive rules (odometer, engine hours, calendar), corrective work orders & vendor parts, and accident reporting."}
         </p>
       </div>
 
+      {isDriverOnly ? (
+        <IncidentsTab canWrite={canWriteIncidents} />
+      ) : (
+        <>
       <StaggerGrid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StaggerItem>
           <Card className="h-full rounded-2xl">
@@ -140,6 +165,8 @@ export default function MaintenancePage() {
           <IncidentsTab canWrite={canWriteIncidents} />
         </TabsContent>
       </Tabs>
+        </>
+      )}
     </div>
   );
 }

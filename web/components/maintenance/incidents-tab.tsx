@@ -39,8 +39,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { formatCurrency, formatShortDate, toIsoDate } from "@/lib/format";
+import { getScopedIncidents, getScopedVehicles } from "@/lib/rbac-scope";
 import type { IncidentSeverity, IncidentStatus } from "@/types";
 
 const NO_DRIVER = "__no_driver__";
@@ -58,12 +60,36 @@ const INCIDENT_STATUS_ITEMS: Record<IncidentStatus, string> = {
 };
 
 export function IncidentsTab({ canWrite }: { canWrite: boolean }) {
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
-  const incidents = useFleetStore((s) => s.incidents);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
+  const allIncidents = useFleetStore((s) => s.incidents);
   const addIncident = useFleetStore((s) => s.addIncident);
   const updateIncidentStatus = useFleetStore((s) => s.updateIncidentStatus);
   const removeIncident = useFleetStore((s) => s.removeIncident);
+
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
+  );
+  const incidents = useMemo(
+    () =>
+      getScopedIncidents(
+        currentUser,
+        drivers,
+        allVehicles,
+        bookings,
+        trips,
+        allIncidents
+      ),
+    [currentUser, drivers, allVehicles, bookings, trips, allIncidents]
+  );
 
   const [incDialogOpen, setIncDialogOpen] = useState(false);
   const [incSearch, setIncSearch] = useState("");

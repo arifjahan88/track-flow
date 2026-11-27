@@ -22,6 +22,7 @@ import { checkDriverAvailability } from "@/lib/drivers";
 import { formatDateTime, formatKm, offsetIsoDate } from "@/lib/format";
 import { triggerSuccessHaptic } from "@/lib/haptics";
 import { can } from "@/lib/rbac";
+import { getScopedBookings, getScopedTrips } from "@/lib/rbac-scope";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
@@ -38,19 +39,30 @@ export default function TripsScreen() {
 
   const vehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
-  const trips = useFleetStore((s) => s.trips);
-  const bookings = useFleetStore((s) => s.bookings);
+  const allTrips = useFleetStore((s) => s.trips);
+  const allBookings = useFleetStore((s) => s.bookings);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const addBooking = useFleetStore((s) => s.addBooking);
-  const updateBookingStatus = useFleetStore((s) => s.updateBookingStatus);
+  const rejectBooking = useFleetStore((s) => s.rejectBooking);
   const addActiveTripWaypoint = useFleetStore((s) => s.addActiveTripWaypoint);
   const setSelectedVehicle = useFleetStore((s) => s.setSelectedVehicle);
+
+  const trips = useMemo(
+    () => getScopedTrips(currentUser, drivers, allTrips, allBookings),
+    [currentUser, drivers, allTrips, allBookings]
+  );
+  const bookings = useMemo(
+    () => getScopedBookings(currentUser, drivers, allBookings),
+    [currentUser, drivers, allBookings]
+  );
 
   // New Booking form state
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [requesterName, setRequesterName] = useState(
-    currentUser?.name ?? "Marcus Vance"
+    currentUser?.name ?? "Nadia Karim"
   );
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [dropoffLocation, setDropoffLocation] = useState("");
   const [bookingPurpose, setBookingPurpose] = useState("");
   const [estimatedKm, setEstimatedKm] = useState("24");
 
@@ -90,15 +102,20 @@ export default function TripsScreen() {
   const handleCreateBooking = () => {
     if (!bookingPurpose.trim()) return;
     addBooking({
+      requesterUserId: currentUser?.id,
       requesterName: requesterName.trim() || "Operations Team",
-      department: "Mobile Dispatch",
+      department: "Mobile Request",
       purpose: bookingPurpose.trim(),
-      requestedDate: offsetIsoDate(1),
+      pickupLocation: pickupLocation.trim() || "Gulshan-2 Central Hub",
+      dropoffLocation: dropoffLocation.trim() || bookingPurpose.trim(),
+      requestedDate: offsetIsoDate(0),
+      requestedTime: "10:30",
+      passengerCount: 1,
       estimatedKm: Math.max(4, Number(estimatedKm) || 20),
-      vehicleId: selectedVehicleId,
-      driverId: drivers[0]?.id,
     });
     triggerSuccessHaptic();
+    setPickupLocation("");
+    setDropoffLocation("");
     setBookingPurpose("");
     setShowBookingForm(false);
   };
@@ -551,6 +568,34 @@ export default function TripsScreen() {
                   ]}
                 />
                 <TextInput
+                  value={pickupLocation}
+                  onChangeText={setPickupLocation}
+                  placeholder="Pickup location (e.g. Gulshan-2 Hub)"
+                  placeholderTextColor={theme.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                />
+                <TextInput
+                  value={dropoffLocation}
+                  onChangeText={setDropoffLocation}
+                  placeholder="Drop-off destination (e.g. Airport Gate 4)"
+                  placeholderTextColor={theme.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                />
+                <TextInput
                   value={bookingPurpose}
                   onChangeText={setBookingPurpose}
                   placeholder="Trip purpose & destination manifest"
@@ -580,7 +625,7 @@ export default function TripsScreen() {
                   ]}
                 />
                 <Button
-                  label="Submit Dispatch Booking"
+                  label="Submit Request to Admin"
                   variant="emerald"
                   fullWidth
                   onPress={handleCreateBooking}
@@ -596,18 +641,23 @@ export default function TripsScreen() {
                 : { available: true };
 
               const tone =
-                b.status === "approved"
-                  ? "emerald"
-                  : b.status === "dispatched"
-                    ? "cyan"
-                    : b.status === "rejected"
-                      ? "danger"
-                      : "amber";
+                b.status === "assigned"
+                  ? "primary"
+                  : b.status === "in_progress"
+                    ? "emerald"
+                    : b.status === "completed"
+                      ? "neutral"
+                      : b.status === "rejected"
+                        ? "danger"
+                        : "amber";
 
               return (
                 <AnimatedCard key={b.id} index={idx + 1}>
                   <View style={styles.rowBetween}>
-                    <Badge label={b.status.toUpperCase()} tone={tone} />
+                    <Badge
+                      label={b.status.replaceAll("_", " ").toUpperCase()}
+                      tone={tone}
+                    />
                     <Text
                       style={[
                         styles.monoMeta,
@@ -630,12 +680,17 @@ export default function TripsScreen() {
                     {b.purpose}
                   </Text>
                   <Text style={[styles.cardSub, { color: theme.textSecondary }]}>
-                    Requested by {b.requesterName} ({b.department ?? "Ops"}) ·
-                    Unit: {v?.name ?? "Pulse Courier 12"} · Driver:{" "}
-                    {d?.name ?? "Priya Nair"}
+                    {b.pickupLocation ?? "Central Hub"} →{" "}
+                    {b.dropoffLocation ?? b.purpose}
+                  </Text>
+                  <Text style={[styles.cardSub, { color: theme.textSecondary }]}>
+                    By {b.requesterName} ·{" "}
+                    {d && v
+                      ? `Driver: ${d.name} · ${v.name} (${v.plate})`
+                      : "Awaiting Admin driver assignment"}
                   </Text>
 
-                  {!avail.available ? (
+                  {!avail.available && b.status === "pending" ? (
                     <Text
                       style={[
                         styles.conflictText,
@@ -650,38 +705,79 @@ export default function TripsScreen() {
                     {b.status === "pending" && canApproveDispatch ? (
                       <>
                         <Button
-                          label="Approve"
+                          label="Assign Driver"
                           size="sm"
-                          variant="emerald"
+                          variant="primary"
                           style={styles.flex}
                           onPress={() =>
-                            updateBookingStatus(b.id, "approved", {
-                              approvedBy: currentUser?.name ?? "Dispatcher",
-                            })
+                            router.push(
+                              `/modal/assign-booking?bookingId=${b.id}`
+                            )
                           }
                         />
                         <Button
                           label="Reject"
                           size="sm"
                           variant="danger"
-                          style={styles.flex}
-                          onPress={() => updateBookingStatus(b.id, "rejected")}
+                          onPress={() =>
+                            rejectBooking(b.id, "Declined by dispatcher")
+                          }
                         />
                       </>
                     ) : null}
 
-                    {b.status === "approved" ? (
-                      <Button
-                        label="Launch Pre-Trip Inspection & Dispatch"
-                        size="sm"
-                        variant="primary"
-                        fullWidth
-                        onPress={() =>
-                          router.push(
-                            `/modal/checklist?phase=pre&vehicleId=${b.vehicleId ?? "veh-4"}&purpose=${encodeURIComponent(b.purpose)}`
-                          )
-                        }
-                      />
+                    {b.status === "assigned" ? (
+                      <>
+                        <Button
+                          label="Start Trip (Pre-Check)"
+                          size="sm"
+                          variant="emerald"
+                          style={styles.flex}
+                          onPress={() =>
+                            router.push(
+                              `/modal/checklist?phase=pre&bookingId=${b.id}&vehicleId=${b.vehicleId ?? "veh-4"}&purpose=${encodeURIComponent(b.purpose)}`
+                            )
+                          }
+                        />
+                        {canApproveDispatch ? (
+                          <Button
+                            label="Reassign"
+                            size="sm"
+                            variant="secondary"
+                            onPress={() =>
+                              router.push(
+                                `/modal/assign-booking?bookingId=${b.id}`
+                              )
+                            }
+                          />
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {b.status === "in_progress" ? (
+                      <>
+                        <Button
+                          label="Track Live"
+                          size="sm"
+                          variant="secondary"
+                          style={styles.flex}
+                          onPress={() => {
+                            if (b.vehicleId) setSelectedVehicle(b.vehicleId);
+                            router.navigate("/(tabs)");
+                          }}
+                        />
+                        <Button
+                          label="Finish Trip"
+                          size="sm"
+                          variant="danger"
+                          style={styles.flex}
+                          onPress={() =>
+                            router.push(
+                              `/modal/checklist?phase=post&vehicleId=${b.vehicleId ?? "veh-4"}`
+                            )
+                          }
+                        />
+                      </>
                     ) : null}
                   </View>
                 </AnimatedCard>

@@ -14,6 +14,7 @@ import {
   Radio,
   ShieldCheck,
   Truck,
+  User,
   UserCheck,
   Wrench,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { ROLE_LABELS } from "@/lib/rbac";
+import { getScopedAlerts, getScopedVehicles } from "@/lib/rbac-scope";
 import type { UserRole } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -75,9 +77,44 @@ const ROLE_ICON: Record<UserRole, typeof ShieldCheck> = {
   dispatcher: Radio,
   mechanic: Wrench,
   driver: Truck,
+  employee: User,
 };
 
-const ROLE_ORDER: UserRole[] = ["super_admin", "fleet_manager", "dispatcher", "mechanic", "driver"];
+const ROLE_ORDER: UserRole[] = [
+  "super_admin",
+  "fleet_manager",
+  "dispatcher",
+  "mechanic",
+  "driver",
+  "employee",
+];
+
+const ROLE_DASHBOARD_META: Record<UserRole, { title: string; subtitle: string }> = {
+  super_admin: {
+    title: "Super Admin Command Center",
+    subtitle: "Fleet KPIs, pending trip approvals, RBAC governance, and audit trail",
+  },
+  fleet_manager: {
+    title: "Fleet Operations Dashboard",
+    subtitle: "Compliance alerts, fuel anomalies, trip approvals, and cost control",
+  },
+  dispatcher: {
+    title: "Dispatch Control Center",
+    subtitle: "Assign drivers to pending requests, track available pool, and live GPS",
+  },
+  mechanic: {
+    title: "Mechanic Service Bay",
+    subtitle: "Active work orders, due preventive services, and maintenance holds",
+  },
+  driver: {
+    title: "Driver Duty Dashboard",
+    subtitle: "Assigned trips ready to start, active route control, and safety score",
+  },
+  employee: {
+    title: "My Trip Portal",
+    subtitle: "Request trips, check assigned driver details, and track rides live",
+  },
+};
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -99,21 +136,41 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
   const switchRole = useAuthStore((s) => s.switchRole);
   const logout = useAuthStore((s) => s.logout);
 
-  const vehicles = useFleetStore((s) => s.vehicles);
-  const alerts = useFleetStore((s) => s.alerts);
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
+  const allAlerts = useFleetStore((s) => s.alerts);
   const isSimulating = useFleetStore((s) => s.isSimulating);
   const markAlertRead = useFleetStore((s) => s.markAlertRead);
   const markAllAlertsRead = useFleetStore((s) => s.markAllAlertsRead);
 
   const currentUser = users.find((u) => u.id === currentUserId);
   const activeRole: UserRole = currentUser?.role ?? "super_admin";
+  const vehicles = getScopedVehicles(
+    currentUser,
+    drivers,
+    allVehicles,
+    bookings,
+    trips
+  );
+  const alerts = getScopedAlerts(
+    currentUser,
+    drivers,
+    allVehicles,
+    bookings,
+    trips,
+    allAlerts
+  );
   const liveCount = vehicles.filter((v) => v.status === "on_trip").length;
   const unreadCount = alerts.filter((a) => !a.read).length;
 
   const meta =
-    Object.entries(PAGE_TITLES).find(
-      ([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-    )?.[1] ?? PAGE_TITLES["/dashboard"];
+    pathname === "/dashboard"
+      ? ROLE_DASHBOARD_META[activeRole]
+      : Object.entries(PAGE_TITLES).find(
+          ([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+        )?.[1] ?? ROLE_DASHBOARD_META[activeRole];
 
   const handleSignOut = () => {
     logout();

@@ -314,7 +314,7 @@ export default function ProfileScreen() {
         {/* 3. 1-TAP ROLE SWITCHER & RBAC CAPABILITIES */}
         <AnimatedCard index={2}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            1-Tap Role Switcher (5 TrackFlow Personas)
+            1-Tap Role Switcher (6 TrackFlow Personas)
           </Text>
           <Text style={[styles.cardSub, { color: theme.textSecondary }]}>
             {ROLE_DESCRIPTIONS[activeRole]}
@@ -379,67 +379,76 @@ export default function ProfileScreen() {
           </View>
         </AnimatedCard>
 
-        {/* 4. RECENT AUDIT LOG & LOCAL ASYNCSTORAGE RESET */}
+        {/* 4. RECENT AUDIT LOG (ADMIN/MANAGER ONLY) & ACCOUNT ACTIONS */}
         <AnimatedCard index={3}>
-          <View style={styles.rowBetween}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Local AsyncStorage Audit Stream
-            </Text>
-            <Badge label={`${auditLogs.length} EVENTS`} tone="cyan" mono />
-          </View>
+          {can(activeRole, "audit:view") ? (
+            <>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  Local AsyncStorage Audit Stream
+                </Text>
+                <Badge label={`${auditLogs.length} EVENTS`} tone="cyan" mono />
+              </View>
 
-          <View style={styles.auditList}>
-            {auditLogs.slice(0, 5).map((entry) => (
-              <View
-                key={entry.id}
-                style={[
-                  styles.auditRow,
-                  {
-                    backgroundColor: theme.muted,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <View style={styles.rowBetween}>
-                  <Text
+              <View style={styles.auditList}>
+                {auditLogs.slice(0, 5).map((entry) => (
+                  <View
+                    key={entry.id}
                     style={[
-                      styles.auditAction,
+                      styles.auditRow,
                       {
-                        color: theme.primary,
-                        fontFamily: Fonts?.mono,
+                        backgroundColor: theme.muted,
+                        borderColor: theme.border,
                       },
                     ]}
                   >
-                    {entry.action}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.auditTime,
-                      { color: theme.textSecondary, fontFamily: Fonts?.mono },
-                    ]}
-                  >
-                    {formatDateTime(entry.timestamp)}
-                  </Text>
-                </View>
-                <Text style={[styles.auditSummary, { color: theme.text }]}>
-                  {entry.summary}
-                </Text>
+                    <View style={styles.rowBetween}>
+                      <Text
+                        style={[
+                          styles.auditAction,
+                          {
+                            color: theme.primary,
+                            fontFamily: Fonts?.mono,
+                          },
+                        ]}
+                      >
+                        {entry.action}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.auditTime,
+                          {
+                            color: theme.textSecondary,
+                            fontFamily: Fonts?.mono,
+                          },
+                        ]}
+                      >
+                        {formatDateTime(entry.timestamp)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.auditSummary, { color: theme.text }]}>
+                      {entry.summary}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
+            </>
+          ) : null}
 
           <View style={styles.footerBtns}>
-            <Button
-              label={
-                resetConfirmed
-                  ? "✓ Demo Dataset Restored!"
-                  : "Reset Demo Fleet Data"
-              }
-              variant="secondary"
-              size="md"
-              style={styles.flex}
-              onPress={handleResetDemo}
-            />
+            {can(activeRole, "audit:view") ? (
+              <Button
+                label={
+                  resetConfirmed
+                    ? "✓ Demo Dataset Restored!"
+                    : "Reset Demo Fleet Data"
+                }
+                variant="secondary"
+                size="md"
+                style={styles.flex}
+                onPress={handleResetDemo}
+              />
+            ) : null}
             <Button
               label="Sign Out"
               variant="danger"

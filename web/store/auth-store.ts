@@ -47,7 +47,16 @@ export const SEED_USERS: User[] = [
     passwordHash: DEMO_PASSWORD_HASH,
     role: "driver",
     assignedVehicleId: "veh-1",
+    driverId: "drv-1",
     createdAt: "2026-01-15T00:00:00.000Z",
+  },
+  {
+    id: "user-employee",
+    name: "Nadia Karim",
+    email: "user@demo.com",
+    passwordHash: DEMO_PASSWORD_HASH,
+    role: "employee",
+    createdAt: "2026-01-20T00:00:00.000Z",
   },
 ];
 
@@ -78,7 +87,7 @@ export const DEMO_ACCOUNTS: Array<{
     name: "Sarah Chen",
     email: "dispatch@demo.com",
     role: "dispatcher",
-    tagline: "Live GPS dispatch, bookings & driver shifts",
+    tagline: "Assign drivers, live GPS radar & bookings queue",
   },
   {
     id: "user-mechanic",
@@ -94,6 +103,13 @@ export const DEMO_ACCOUNTS: Array<{
     role: "driver",
     tagline: "Assigned to Atlas Hauler 01 (FP-8421)",
     assignedVehicleId: "veh-1",
+  },
+  {
+    id: "user-employee",
+    name: "Nadia Karim",
+    email: "user@demo.com",
+    role: "employee",
+    tagline: "Request trips & track assigned driver live",
   },
 ];
 
@@ -129,6 +145,7 @@ function normalizeUsers(rawUsers: unknown): User[] {
       passwordHash: u.passwordHash ?? DEMO_PASSWORD_HASH,
       role: (u.role ?? seedMatch?.role ?? "super_admin") as UserRole,
       assignedVehicleId: u.assignedVehicleId ?? seedMatch?.assignedVehicleId,
+      driverId: u.driverId ?? seedMatch?.driverId,
       createdAt: u.createdAt ?? "2026-01-01T00:00:00.000Z",
     };
   });
@@ -248,7 +265,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "tf-auth",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Partial<AuthState>;

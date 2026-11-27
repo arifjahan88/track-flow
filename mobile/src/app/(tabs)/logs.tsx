@@ -14,6 +14,13 @@ import { computeWorkOrderTotal } from "@/lib/analytics";
 import { formatCurrency } from "@/lib/format";
 import { computeFuelEfficiency, detectFuelAnomalies } from "@/lib/fuel";
 import { getMaintenanceStatus } from "@/lib/maintenance";
+import { can } from "@/lib/rbac";
+import {
+  getScopedExpenses,
+  getScopedFuelLogs,
+  getScopedIncidents,
+} from "@/lib/rbac-scope";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import type { WorkOrderStatus } from "@/types";
 
@@ -28,15 +35,98 @@ const NEXT_WO_STATUS: Record<WorkOrderStatus, WorkOrderStatus> = {
 
 export default function LogsScreen() {
   const theme = useTheme();
-  const [subTab, setSubTab] = useState<LogsTabMode>("fuel");
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const activeRole = currentUser?.role ?? "driver";
+  const canServiceBay =
+    can(activeRole, "maintenance:write") || can(activeRole, "work_orders:write");
+  const canFuel = can(activeRole, "fuel:write");
+  const canExpenses = can(activeRole, "expenses:write");
+
+  const [subTab, setSubTab] = useState<LogsTabMode>(
+    activeRole === "mechanic" ? "maintenance" : "fuel"
+  );
 
   const vehicles = useFleetStore((s) => s.vehicles);
-  const fuelLogs = useFleetStore((s) => s.fuelLogs);
-  const expenses = useFleetStore((s) => s.expenses);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
+  const allFuelLogs = useFleetStore((s) => s.fuelLogs);
+  const allExpenses = useFleetStore((s) => s.expenses);
   const maintenanceRecords = useFleetStore((s) => s.maintenanceRecords);
   const workOrders = useFleetStore((s) => s.workOrders);
-  const incidents = useFleetStore((s) => s.incidents);
+  const allIncidents = useFleetStore((s) => s.incidents);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
+
+  const fuelLogs = useMemo(
+    () =>
+      getScopedFuelLogs(
+        currentUser,
+        drivers,
+        vehicles,
+        bookings,
+        trips,
+        allFuelLogs
+      ),
+    [currentUser, drivers, vehicles, bookings, trips, allFuelLogs]
+  );
+  const expenses = useMemo(
+    () =>
+      getScopedExpenses(
+        currentUser,
+        drivers,
+        vehicles,
+        bookings,
+        trips,
+        allExpenses
+      ),
+    [currentUser, drivers, vehicles, bookings, trips, allExpenses]
+  );
+  const incidents = useMemo(
+    () =>
+      getScopedIncidents(
+        currentUser,
+        drivers,
+        vehicles,
+        bookings,
+        trips,
+        allIncidents
+      ),
+    [currentUser, drivers, vehicles, bookings, trips, allIncidents]
+  );
+
+  const availableOptions = useMemo(() => {
+    const opts: Array<{ value: LogsTabMode; label: string; count: number }> = [];
+    if (canFuel) opts.push({ value: "fuel", label: "Fuel", count: fuelLogs.length });
+    if (canExpenses) {
+      opts.push({ value: "expenses", label: "Expenses", count: expenses.length });
+    }
+    if (canServiceBay) {
+      opts.push({
+        value: "maintenance",
+        label: "Service",
+        count: workOrders.length + maintenanceRecords.length,
+      });
+    }
+    opts.push({ value: "incidents", label: "SOS", count: incidents.length });
+    return opts;
+  }, [
+    canFuel,
+    canExpenses,
+    canServiceBay,
+    fuelLogs.length,
+    expenses.length,
+    workOrders.length,
+    maintenanceRecords.length,
+    incidents.length,
+  ]);
+
+  const effectiveSubTab: LogsTabMode = availableOptions.some(
+    (o) => o.value === subTab
+  )
+    ? subTab
+    : (availableOptions[0]?.value ?? "incidents");
 
   const completeMaintenanceRecord = useFleetStore(
     (s) => s.completeMaintenanceRecord
@@ -78,17 +168,8 @@ export default function LogsScreen() {
 
       <View style={styles.segmentWrap}>
         <SegmentedControl
-          options={[
-            { value: "fuel", label: "Fuel", count: fuelLogs.length },
-            { value: "expenses", label: "Expenses", count: expenses.length },
-            {
-              value: "maintenance",
-              label: "Service",
-              count: workOrders.length + maintenanceRecords.length,
-            },
-            { value: "incidents", label: "SOS", count: incidents.length },
-          ]}
-          value={subTab}
+          options={availableOptions}
+          value={effectiveSubTab}
           onChange={setSubTab}
         />
       </View>
@@ -98,7 +179,7 @@ export default function LogsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* 1. FUEL FILL-UP LOGS & ANOMALY DETECTION */}
-        {subTab === "fuel" ? (
+        {effectiveSubTab === "fuel" ? (
           <>
             <Button
               label="+ Log Fuel Fill-Up"
@@ -190,7 +271,7 @@ export default function LogsScreen() {
         ) : null}
 
         {/* 2. OPERATING EXPENSES (TOLLS, PARKING, ALLOWANCES) */}
-        {subTab === "expenses" ? (
+        {effectiveSubTab === "expenses" ? (
           <>
             <Button
               label="+ Log Toll / Parking / Allowance"
@@ -238,7 +319,7 @@ export default function LogsScreen() {
         ) : null}
 
         {/* 3. PREVENTIVE SERVICE RULES & MECHANIC WORK ORDERS */}
-        {subTab === "maintenance" ? (
+        {effectiveSubTab === "maintenance" ? (
           <>
             <Text
               style={[styles.sectionHeading, { color: theme.textSecondary }]}
@@ -409,7 +490,7 @@ export default function LogsScreen() {
         ) : null}
 
         {/* 4. ROADSIDE INCIDENTS & SOS REPORTS */}
-        {subTab === "incidents" ? (
+        {effectiveSubTab === "incidents" ? (
           <>
             <Button
               label="SOS · Report Roadside Incident / Accident"

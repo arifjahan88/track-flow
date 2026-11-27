@@ -9,6 +9,7 @@ import { Fonts, Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { triggerLightHaptic, triggerMediumHaptic } from "@/lib/haptics";
 import { ROLE_LABELS } from "@/lib/rbac";
+import { getScopedAlerts } from "@/lib/rbac-scope";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
@@ -32,12 +33,23 @@ export function TopStatusHeader({
   const currentUserId = useAuthStore((s) => s.currentUserId);
   const driverOnDuty = useFleetStore((s) => s.driverOnDuty);
   const toggleDriverOnDuty = useFleetStore((s) => s.toggleDriverOnDuty);
-  const alerts = useFleetStore((s) => s.alerts);
-  const markAllAlertsRead = useFleetStore((s) => s.markAllAlertsRead);
+  const allAlerts = useFleetStore((s) => s.alerts);
+  const drivers = useFleetStore((s) => s.drivers);
+  const vehicles = useFleetStore((s) => s.vehicles);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
 
   const currentUser = users.find((u) => u.id === currentUserId);
   const activeRole = currentUser?.role ?? "driver";
-  const unreadAlerts = alerts.filter((a) => !a.read).length;
+  const scopedAlerts = getScopedAlerts(
+    currentUser,
+    drivers,
+    vehicles,
+    bookings,
+    trips,
+    allAlerts
+  );
+  const unreadAlerts = scopedAlerts.filter((a) => !a.read).length;
 
   return (
     <>

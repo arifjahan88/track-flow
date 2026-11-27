@@ -39,8 +39,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { formatCurrency, formatShortDate, toIsoDate } from "@/lib/format";
+import {
+  getScopedExpenses,
+  getScopedTrips,
+  getScopedVehicles,
+} from "@/lib/rbac-scope";
 import type { ExpenseCategory } from "@/types";
 
 const ALL_CATEGORIES = "__all_categories__";
@@ -74,11 +80,39 @@ export function OperatingExpensesTab({
   canWrite,
   onPreviewReceipt,
 }: OperatingExpensesTabProps) {
-  const vehicles = useFleetStore((s) => s.vehicles);
-  const trips = useFleetStore((s) => s.trips);
-  const expenses = useFleetStore((s) => s.expenses);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const allTrips = useFleetStore((s) => s.trips);
+  const allExpenses = useFleetStore((s) => s.expenses);
   const addExpense = useFleetStore((s) => s.addExpense);
   const removeExpense = useFleetStore((s) => s.removeExpense);
+
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, allTrips),
+    [currentUser, drivers, allVehicles, bookings, allTrips]
+  );
+  const trips = useMemo(
+    () => getScopedTrips(currentUser, drivers, allTrips, bookings),
+    [currentUser, drivers, allTrips, bookings]
+  );
+  const expenses = useMemo(
+    () =>
+      getScopedExpenses(
+        currentUser,
+        drivers,
+        allVehicles,
+        bookings,
+        allTrips,
+        allExpenses
+      ),
+    [currentUser, drivers, allVehicles, bookings, allTrips, allExpenses]
+  );
 
   const [expSearch, setExpSearch] = useState("");
   const [expCategoryFilter, setExpCategoryFilter] = useState(ALL_CATEGORIES);

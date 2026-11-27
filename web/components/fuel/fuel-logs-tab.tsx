@@ -54,9 +54,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { formatCurrency, formatKm, formatShortDate, toIsoDate } from "@/lib/format";
 import { kmPerLiterToMpg, type FuelAnomaly } from "@/lib/fuel";
+import { getScopedFuelLogs, getScopedVehicles } from "@/lib/rbac-scope";
 import type { FuelLog } from "@/types";
 
 const ALL_TANKS = "__all_tanks__";
@@ -102,11 +104,36 @@ export function FuelLogsTab({
   anomaliesByLogId,
   onPreviewReceipt,
 }: FuelLogsTabProps) {
-  const vehicles = useFleetStore((s) => s.vehicles);
-  const fuelLogs = useFleetStore((s) => s.fuelLogs);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
+  const allFuelLogs = useFleetStore((s) => s.fuelLogs);
   const addFuelLog = useFleetStore((s) => s.addFuelLog);
   const updateFuelLog = useFleetStore((s) => s.updateFuelLog);
   const removeFuelLog = useFleetStore((s) => s.removeFuelLog);
+
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
+  );
+  const fuelLogs = useMemo(
+    () =>
+      getScopedFuelLogs(
+        currentUser,
+        drivers,
+        allVehicles,
+        bookings,
+        trips,
+        allFuelLogs
+      ),
+    [currentUser, drivers, allVehicles, bookings, trips, allFuelLogs]
+  );
 
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");

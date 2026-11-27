@@ -29,6 +29,11 @@ import {
   kmPerLiterToMpg,
 } from "@/lib/fuel";
 import { can } from "@/lib/rbac";
+import {
+  getScopedExpenses,
+  getScopedFuelLogs,
+  getScopedVehicles,
+} from "@/lib/rbac-scope";
 import type { FuelLog } from "@/types";
 
 const ALL_VEHICLES = "__all__";
@@ -38,13 +43,47 @@ export default function FuelPage() {
   const hydrated = useHydrated();
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
-  const currentRole = users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const currentRole = currentUser?.role ?? "super_admin";
   const canLogFuel = can(currentRole, "fuel:write");
   const canLogExpenses = can(currentRole, "expenses:write");
 
-  const vehicles = useFleetStore((s) => s.vehicles);
-  const fuelLogs = useFleetStore((s) => s.fuelLogs);
-  const expenses = useFleetStore((s) => s.expenses);
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
+  const allFuelLogs = useFleetStore((s) => s.fuelLogs);
+  const allExpenses = useFleetStore((s) => s.expenses);
+
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
+  );
+  const fuelLogs = useMemo(
+    () =>
+      getScopedFuelLogs(
+        currentUser,
+        drivers,
+        allVehicles,
+        bookings,
+        trips,
+        allFuelLogs
+      ),
+    [currentUser, drivers, allVehicles, bookings, trips, allFuelLogs]
+  );
+  const expenses = useMemo(
+    () =>
+      getScopedExpenses(
+        currentUser,
+        drivers,
+        allVehicles,
+        bookings,
+        trips,
+        allExpenses
+      ),
+    [currentUser, drivers, allVehicles, bookings, trips, allExpenses]
+  );
 
   const [vehicleFilter, setVehicleFilter] = useState(ALL_VEHICLES);
   const [tankFilter, setTankFilter] = useState(ALL_TANKS);

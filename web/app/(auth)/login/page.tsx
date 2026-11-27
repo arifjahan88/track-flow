@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Loader2, Radio, ShieldCheck, Truck, UserCheck, Wrench } from "lucide-react";
+import { ArrowRight, Loader2, Radio, ShieldCheck, Truck, User, UserCheck, Wrench } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,7 @@ const ROLE_ICON: Record<UserRole, typeof ShieldCheck> = {
   dispatcher: Radio,
   mechanic: Wrench,
   driver: Truck,
+  employee: User,
 };
 
 const ROLE_COLOR: Record<UserRole, string> = {
@@ -40,6 +41,7 @@ const ROLE_COLOR: Record<UserRole, string> = {
   dispatcher: "border-violet-500/35 bg-violet-500/12 text-violet-600 dark:text-violet-300",
   mechanic: "border-amber-500/35 bg-amber-500/12 text-amber-600 dark:text-amber-300",
   driver: "border-sky-500/35 bg-sky-500/12 text-sky-600 dark:text-sky-300",
+  employee: "border-teal-500/35 bg-teal-500/12 text-teal-600 dark:text-teal-300",
 };
 
 export default function LoginPage() {
@@ -321,7 +323,7 @@ export default function LoginPage() {
                         Quick Demo Accounts (1-Click Launch)
                       </p>
                       <span className="fp-telemetry text-[11px] text-muted-foreground">
-                        5 roles ready
+                        6 roles ready
                       </span>
                     </div>
 

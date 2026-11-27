@@ -17,6 +17,8 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Fonts, Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { triggerLightHaptic, triggerMediumHaptic } from "@/lib/haptics";
+import { getScopedAlerts } from "@/lib/rbac-scope";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import type { FleetAlert, FleetAlertSeverity } from "@/types";
 
@@ -59,11 +61,31 @@ const SEVERITY_META: Record<
 
 export default function NotificationsScreen() {
   const theme = useTheme();
-  const alerts = useFleetStore((s) => s.alerts);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allAlerts = useFleetStore((s) => s.alerts);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
   const markAlertRead = useFleetStore((s) => s.markAlertRead);
   const markAllAlertsRead = useFleetStore((s) => s.markAllAlertsRead);
   const setSelectedVehicle = useFleetStore((s) => s.setSelectedVehicle);
   const vehicles = useFleetStore((s) => s.vehicles);
+
+  const alerts = useMemo(
+    () =>
+      getScopedAlerts(
+        currentUser,
+        drivers,
+        vehicles,
+        bookings,
+        trips,
+        allAlerts
+      ),
+    [currentUser, drivers, vehicles, bookings, trips, allAlerts]
+  );
 
   const [filter, setFilter] = useState<AlertFilter>("all");
 

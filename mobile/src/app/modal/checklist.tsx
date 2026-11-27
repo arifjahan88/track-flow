@@ -25,6 +25,7 @@ export default function ChecklistModalScreen() {
   const params = useLocalSearchParams<{
     phase?: string;
     vehicleId?: string;
+    bookingId?: string;
     purpose?: string;
   }>();
 
@@ -32,6 +33,7 @@ export default function ChecklistModalScreen() {
   const vehicles = useFleetStore((s) => s.vehicles);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const startTripForVehicle = useFleetStore((s) => s.startTripForVehicle);
+  const startAssignedBooking = useFleetStore((s) => s.startAssignedBooking);
   const endActiveTripForVehicle = useFleetStore(
     (s) => s.endActiveTripForVehicle
   );
@@ -110,14 +112,16 @@ export default function ChecklistModalScreen() {
     };
 
     if (phase === "pre") {
-      const res = startTripForVehicle(
-        targetVehicleId,
-        undefined,
-        params.purpose,
-        checklist
-      );
+      const res = params.bookingId
+        ? startAssignedBooking(params.bookingId, checklist)
+        : startTripForVehicle(
+            targetVehicleId,
+            undefined,
+            params.purpose,
+            checklist
+          );
       if (!res.ok) {
-        setError(res.error ?? "Unable to dispatch vehicle.");
+        setError(res.error ?? "Unable to start trip.");
         return;
       }
     } else {

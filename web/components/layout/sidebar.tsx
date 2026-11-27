@@ -17,7 +17,9 @@ import {
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
+import { canAccessRoute } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -70,8 +72,13 @@ export function Sidebar({
   isMobileSheet = false,
 }: SidebarProps) {
   const pathname = usePathname();
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const activeRole = users.find((u) => u.id === currentUserId)?.role ?? "super_admin";
   const vehicles = useFleetStore((s) => s.vehicles);
+  const bookings = useFleetStore((s) => s.bookings);
   const liveCount = vehicles.filter((v) => v.status === "on_trip").length;
+  const pendingBookingsCount = bookings.filter((b) => b.status === "pending").length;
   const isCompact = collapsed && !isMobileSheet;
 
   return (
@@ -134,7 +141,13 @@ export function Sidebar({
 
       {/* Navigation Links */}
       <nav aria-label="Primary navigation" className="flex-1 space-y-5 overflow-y-auto px-2.5 py-4">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => {
+          const visibleItems = group.items.filter((item) =>
+            canAccessRoute(activeRole, item.href)
+          );
+          if (visibleItems.length === 0) return null;
+
+          return (
           <div key={group.title} className="space-y-1">
             {!isCompact ? (
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
@@ -142,10 +155,22 @@ export function Sidebar({
               </p>
             ) : null}
 
-            {group.items.map((item) => {
+            {visibleItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
               const showLive = item.badgeType === "live" && liveCount > 0;
+              const showPending =
+                item.href === "/trips" &&
+                pendingBookingsCount > 0 &&
+                (activeRole === "super_admin" ||
+                  activeRole === "fleet_manager" ||
+                  activeRole === "dispatcher");
+              const itemLabel =
+                item.href === "/dashboard" && activeRole === "employee"
+                  ? "My Trip Portal"
+                  : item.href === "/trips" && activeRole === "employee"
+                    ? "My Trips & Live Map"
+                    : item.label;
 
               const linkEl = (
                 <Link
@@ -178,8 +203,12 @@ export function Sidebar({
 
                   {!isCompact ? (
                     <>
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {showLive ? (
+                      <span className="min-w-0 flex-1 truncate">{itemLabel}</span>
+                      {showPending ? (
+                        <span className="fp-telemetry ml-auto inline-flex shrink-0 items-center rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-300">
+                          {pendingBookingsCount} REQ
+                        </span>
+                      ) : showLive ? (
                         <span className="fp-telemetry ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-500/30 bg-emerald-500/12 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-300">
                           <span className="animate-fp-pulse-dot size-1.5 shrink-0 rounded-full bg-emerald-500" />
                           {liveCount} LIVE
@@ -197,7 +226,7 @@ export function Sidebar({
                   <Tooltip key={item.href}>
                     <TooltipTrigger render={linkEl} />
                     <TooltipContent side="right" className="font-medium">
-                      {item.label}
+                      {itemLabel}
                       {showLive ? ` (${liveCount} live)` : ""}
                     </TooltipContent>
                   </Tooltip>
@@ -207,7 +236,8 @@ export function Sidebar({
               return linkEl;
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
     </div>
   );

@@ -23,6 +23,7 @@ interface RoleSwitcherSheetProps {
 
 const ROLE_TONE: Record<UserRole, BadgeTone> = {
   driver: "primary",
+  employee: "primary",
   dispatcher: "neutral",
   fleet_manager: "neutral",
   mechanic: "neutral",
@@ -31,6 +32,7 @@ const ROLE_TONE: Record<UserRole, BadgeTone> = {
 
 const ROLE_ICON: Record<UserRole, keyof typeof Ionicons.glyphMap> = {
   driver: "navigate-circle",
+  employee: "person",
   dispatcher: "radio",
   fleet_manager: "briefcase",
   mechanic: "construct",
@@ -75,7 +77,7 @@ export function RoleSwitcherSheet({
                 Quick Role & Theme Switcher
               </Text>
               <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-                Test all 5 TrackFlow personas & Light/Dark cockpit modes
+                Test all 6 TrackFlow personas &amp; Light/Dark cockpit modes
               </Text>
             </View>
             <Pressable

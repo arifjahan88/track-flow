@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { getRouteById } from "@/lib/city-routes";
@@ -40,6 +41,12 @@ import {
   lerpAngle,
 } from "@/lib/geo-sim";
 import { formatDateTime } from "@/lib/format";
+import { can } from "@/lib/rbac";
+import {
+  getScopedBookings,
+  getScopedTrips,
+  getScopedVehicles,
+} from "@/lib/rbac-scope";
 import type {
   LiveVehicleFrame,
   SimulationTickUpdate,
@@ -62,28 +69,60 @@ function TripsTrackingContent() {
   const hydrated = useHydrated();
   const searchParams = useSearchParams();
   const queryVehicleId = searchParams.get("vehicle");
+  const queryTab = searchParams.get("tab");
 
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+  const activeRole = currentUser?.role ?? "super_admin";
+  const canManageGeofences = can(activeRole, "geofences:write");
+  const canOperateTrips = can(activeRole, "trips:operate");
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
-  const trips = useFleetStore((s) => s.trips);
-  const bookings = useFleetStore((s) => s.bookings);
+  const allTrips = useFleetStore((s) => s.trips);
+  const allBookings = useFleetStore((s) => s.bookings);
   const geofences = useFleetStore((s) => s.geofences);
   const vectorGeofences = useFleetStore((s) => s.vectorGeofences);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const isSimulating = useFleetStore((s) => s.isSimulating);
   const simSpeedMultiplier = useFleetStore((s) => s.simSpeedMultiplier);
 
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(
+        currentUser,
+        drivers,
+        allVehicles,
+        allBookings,
+        allTrips
+      ),
+    [currentUser, drivers, allVehicles, allBookings, allTrips]
+  );
+  const trips = useMemo(
+    () => getScopedTrips(currentUser, drivers, allTrips, allBookings),
+    [currentUser, drivers, allTrips, allBookings]
+  );
+  const bookings = useMemo(
+    () => getScopedBookings(currentUser, drivers, allBookings),
+    [currentUser, drivers, allBookings]
+  );
+
   const setSelectedVehicle = useFleetStore((s) => s.setSelectedVehicle);
   const setIsSimulating = useFleetStore((s) => s.setIsSimulating);
   const setSimSpeedMultiplier = useFleetStore((s) => s.setSimSpeedMultiplier);
   const toggleVectorGeofence = useFleetStore((s) => s.toggleVectorGeofence);
   const startTripForVehicle = useFleetStore((s) => s.startTripForVehicle);
+  const startAssignedBooking = useFleetStore((s) => s.startAssignedBooking);
   const endActiveTripForVehicle = useFleetStore(
     (s) => s.endActiveTripForVehicle
   );
   const applySimulationTick = useFleetStore((s) => s.applySimulationTick);
   const addFleetAlert = useFleetStore((s) => s.addFleetAlert);
 
+  const [activeTab, setActiveTab] = useState<string>(
+    queryTab === "bookings" || queryTab === "geofences" ? queryTab : "bookings"
+  );
   const [frames, setFrames] = useState<Record<string, LiveVehicleFrame>>({});
   const [activeBanner, setActiveBanner] = useState<GeofenceBannerEvent | null>(
     null
@@ -94,6 +133,7 @@ function TripsTrackingContent() {
   const [checklistState, setChecklistState] = useState<{
     phase: "pre" | "post";
     vehicleId: string;
+    bookingId?: string;
     purpose?: string;
   } | null>(null);
 
@@ -340,34 +380,49 @@ function TripsTrackingContent() {
     setChecklistState({ phase: "post", vehicleId });
   };
 
-  const handleDispatchBooking = (booking: TripBooking) => {
+  const handleStartBooking = (booking: TripBooking) => {
     const targetVehId = booking.vehicleId ?? effectiveSelectedId;
     if (!targetVehId) {
-      toast.error("Assign a vehicle to dispatch this booking.");
+      toast.error("Admin must assign a vehicle before starting this trip.");
       return;
     }
     setChecklistState({
       phase: "pre",
       vehicleId: targetVehId,
+      bookingId: booking.id,
       purpose: booking.purpose,
+    });
+  };
+
+  const handleFinishBooking = (booking: TripBooking) => {
+    const targetVehId = booking.vehicleId ?? effectiveSelectedId;
+    if (!targetVehId) return;
+    setChecklistState({
+      phase: "post",
+      vehicleId: targetVehId,
+      bookingId: booking.id,
     });
   };
 
   const handleChecklistConfirm = (checklist: TripChecklist) => {
     if (!checklistState) return;
-    const { phase, vehicleId, purpose } = checklistState;
+    const { phase, vehicleId, bookingId, purpose } = checklistState;
     setChecklistState(null);
 
     if (phase === "pre") {
-      const res = startTripForVehicle(vehicleId, undefined, purpose);
+      const res = bookingId
+        ? startAssignedBooking(bookingId, checklist)
+        : startTripForVehicle(vehicleId, undefined, purpose, {
+            preTripChecklist: checklist,
+          });
       if (!res.ok) {
-        toast.error(res.error ?? "Unable to dispatch trip.");
+        toast.error(res.error ?? "Unable to start trip.");
         return;
       }
-      toast.success("Pre-trip walkaround passed. Vehicle dispatched live.");
+      toast.success("Pre-trip walkaround passed. Live trip started!");
     } else {
       endActiveTripForVehicle(vehicleId, checklist);
-      toast.success("Post-trip inspection saved. Trip completed.");
+      toast.success("Post-trip inspection saved. Trip completed!");
     }
   };
 
@@ -386,66 +441,126 @@ function TripsTrackingContent() {
     (t) => t.vehicleId === effectiveSelectedId && t.status === "active"
   );
 
+  const effectiveTab =
+    !canManageGeofences && activeTab === "geofences" ? "bookings" : activeTab;
+
   return (
     <div className="space-y-6">
-      {/* Main Live Vector Map + Telemetry Inspector */}
-      <div className="grid gap-5 xl:grid-cols-12">
-        <div className="flex flex-col gap-3 xl:col-span-8">
-          <div className="h-[520px] lg:h-[600px]">
-            <LiveVectorMap
+      {/* Main Live Vector Map + Telemetry Inspector (Strictly Role-Scoped) */}
+      {vehicles.length === 0 ? (
+        <div className="rounded-2xl border border-cyan-500/35 bg-cyan-500/6 p-6 text-center">
+          <p className="text-base font-bold text-foreground">
+            {activeRole === "employee"
+              ? "No Active Ride to Track Yet"
+              : "No Assigned Vehicles Active"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {activeRole === "employee"
+              ? "Once Admin assigns a driver to your trip request and the driver starts the trip, live GPS tracking for your ride will appear here."
+              : "Vehicles assigned to your account or active trips will appear on your live map."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-12">
+          <div className="flex flex-col gap-3 xl:col-span-8">
+            <div className="h-[520px] lg:h-[600px]">
+              <LiveVectorMap
+                vehicles={vehicles}
+                frames={frames}
+                geofences={canManageGeofences ? vectorGeofences : []}
+                selectedVehicleId={effectiveSelectedId}
+                initialFollowCamera={Boolean(queryVehicleId)}
+                onSelectVehicle={setSelectedVehicle}
+                onToggleGeofence={toggleVectorGeofence}
+                isSimulating={isSimulating}
+                onToggleSimulating={() => setIsSimulating(!isSimulating)}
+                simSpeedMultiplier={simSpeedMultiplier}
+                onChangeSimSpeed={setSimSpeedMultiplier}
+                activeBanner={activeBanner}
+              />
+            </div>
+
+            {canOperateTrips ? (
+              <div className="overflow-hidden rounded-2xl border border-border bg-card">
+                <ObdDiagnosticsStrip
+                  ignitionOn={selectedVehicle?.status === "on_trip"}
+                  distanceKm={selectedActiveTrip?.distanceKm ?? 0}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="xl:col-span-4 xl:h-[668px]">
+            <TelemetryInspector
               vehicles={vehicles}
+              drivers={drivers}
+              selectedVehicle={selectedVehicle}
+              frame={frames[effectiveSelectedId]}
               frames={frames}
-              geofences={vectorGeofences}
-              selectedVehicleId={effectiveSelectedId}
-              initialFollowCamera={Boolean(queryVehicleId)}
               onSelectVehicle={setSelectedVehicle}
-              onToggleGeofence={toggleVectorGeofence}
-              isSimulating={isSimulating}
-              onToggleSimulating={() => setIsSimulating(!isSimulating)}
-              simSpeedMultiplier={simSpeedMultiplier}
-              onChangeSimSpeed={setSimSpeedMultiplier}
-              activeBanner={activeBanner}
-            />
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-border bg-card">
-            <ObdDiagnosticsStrip
-              ignitionOn={selectedVehicle?.status === "on_trip"}
-              distanceKm={selectedActiveTrip?.distanceKm ?? 0}
+              onStartTrip={
+                canOperateTrips
+                  ? handleStartTrip
+                  : () => toast.info("Only the assigned driver can start this trip.")
+              }
+              onEndTrip={
+                canOperateTrips
+                  ? handleEndTrip
+                  : () => toast.info("Only the assigned driver can end this trip.")
+              }
             />
           </div>
         </div>
+      )}
 
-        <div className="xl:col-span-4 xl:h-[668px]">
-          <TelemetryInspector
-            vehicles={vehicles}
-            drivers={drivers}
-            selectedVehicle={selectedVehicle}
-            frame={frames[effectiveSelectedId]}
-            frames={frames}
-            onSelectVehicle={setSelectedVehicle}
-            onStartTrip={handleStartTrip}
-            onEndTrip={handleEndTrip}
-          />
-        </div>
-      </div>
-
-      {/* Bottom Operations Tabs: Trip History, Bookings & Approvals, Geofences */}
-      <Tabs defaultValue="history" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 rounded-xl sm:max-w-xl">
-          <TabsTrigger value="history" className="rounded-lg">
-            <Route className="mr-1.5 h-3.5 w-3.5" />
-            Trip History ({completedTrips.length})
-          </TabsTrigger>
+      {/* Bottom Operations Tabs: Scoped to Active Role */}
+      <Tabs
+        value={effectiveTab}
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
+        <TabsList
+          className={`grid w-full rounded-xl sm:max-w-xl ${
+            canManageGeofences ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
           <TabsTrigger value="bookings" className="rounded-lg">
             <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
-            Bookings ({bookings.length})
+            {activeRole === "driver"
+              ? `Assigned Trips (${bookings.length})`
+              : activeRole === "employee"
+                ? `My Requests (${bookings.length})`
+                : `Trip Requests (${bookings.length})`}
           </TabsTrigger>
-          <TabsTrigger value="geofences" className="rounded-lg">
-            <Radar className="mr-1.5 h-3.5 w-3.5" />
-            Geofences ({geofences.length})
+          <TabsTrigger value="history" className="rounded-lg">
+            <Route className="mr-1.5 h-3.5 w-3.5" />
+            {activeRole === "driver" || activeRole === "employee"
+              ? `My History (${completedTrips.length})`
+              : `Trip History (${completedTrips.length})`}
           </TabsTrigger>
+          {canManageGeofences ? (
+            <TabsTrigger value="geofences" className="rounded-lg">
+              <Radar className="mr-1.5 h-3.5 w-3.5" />
+              Geofences ({geofences.length})
+            </TabsTrigger>
+          ) : null}
         </TabsList>
+
+        <TabsContent value="bookings">
+          <BookingsPanel
+            onStartBooking={handleStartBooking}
+            onFinishBooking={handleFinishBooking}
+            onTrackVehicle={(vehId) => {
+              setSelectedVehicle(vehId);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onViewCompletedTrip={(tripId) => {
+              const found = trips.find((t) => t.id === tripId);
+              if (found) setSelectedHistoryTrip(found);
+              else toast.info("Trip telemetry preview unavailable.");
+            }}
+          />
+        </TabsContent>
 
         <TabsContent value="history">
           <TripHistoryTable
@@ -456,13 +571,11 @@ function TripsTrackingContent() {
           />
         </TabsContent>
 
-        <TabsContent value="bookings">
-          <BookingsPanel onDispatchBooking={handleDispatchBooking} />
-        </TabsContent>
-
-        <TabsContent value="geofences">
-          <GeofencesPanel />
-        </TabsContent>
+        {canManageGeofences ? (
+          <TabsContent value="geofences">
+            <GeofencesPanel />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       {/* Pre/Post-Trip Inspection Checklist Dialog */}

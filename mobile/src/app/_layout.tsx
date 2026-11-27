@@ -86,6 +86,10 @@ export default function RootLayout() {
             options={{ presentation: "modal", animation: "slide_from_bottom" }}
           />
           <Stack.Screen
+            name="modal/assign-booking"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen
             name="modal/checklist"
             options={{ presentation: "modal", animation: "slide_from_bottom" }}
           />
