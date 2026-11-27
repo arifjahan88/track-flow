@@ -27,18 +27,19 @@ Today, TrackFlow Web runs as a self-contained, browser-persisted interactive pro
 2. Open the local development URL printed in your terminal (default: `http://localhost:3000`).
 3. The root route (`/`) automatically checks authentication state and routes unauthenticated users to `/login` or authenticated users to `/dashboard`.
 
-### 2.2 Authentication & 1-Click Role Personas
-On `/login` (**Sign in to TrackFlow**), you can sign in manually, register a new local profile with a chosen role, or launch instantly using the **Quick Demo Accounts (1-Click Launch)** panel. All five pre-seeded accounts share the demo password `demo1234`:
+### 2.2 Authentication & 1-Click Role Personas (6 Roles)
+On `/login` (**Sign in to TrackFlow**), you can sign in manually, register a new local profile with a chosen role, or launch instantly using the **Quick Demo Accounts (1-Click Launch)** panel. All six pre-seeded accounts share the demo password `demo1234`:
 
-| Persona Name | Role | Email | Primary Operational Focus |
+| Persona Name | Role | Email | Role-Wise Dashboard & Scoped Operational Access |
 | :--- | :--- | :--- | :--- |
-| **Alex Morgan** | **Super Admin** | `demo@demo.com` | Full system access across all modules, RBAC user role assignment, permission matrix, audit trail, JSON backup/restore. |
-| **Sarah Chen** | **Fleet Manager** | `manager@demo.com` | Vehicle registry, compliance vault, driver shifts, booking approvals, fuel/expense oversight, maintenance, TCO & utilization reports. |
-| **David Park** | **Dispatcher** | `dispatch@demo.com` | Trip booking intake & approval, driver availability checks, live GPS command map, corridor simulation, geofence management. |
-| **Carlos Mendez** | **Mechanic** | `mechanic@demo.com` | Preventive maintenance schedules, corrective work orders, spare parts & labor tracking, vehicle maintenance status, incident follow-up. |
-| **Marcus Vance** | **Driver** | `driver@demo.com` | Assigned vehicle spotlight, live cockpit tracking, trip operation, pre/post inspections, Proof of Delivery (POD), fuel, expenses & incidents. |
+| **Alex Morgan** | **Super Admin** | `demo@demo.com` | **Super Admin Command Center:** Full access across all 8 routes, pending trip assignments, RBAC role management, audit trail, JSON backup/restore. |
+| **Farhana Rahman** | **Fleet Manager** | `manager@demo.com` | **Fleet Operations & Cost Control:** Pending trip assignments, Compliance Vault watchlist (`30d/15d/7d`), fuel anomalies, 7-day charts, TCO/CPK reports. |
+| **Sarah Chen** | **Dispatcher** | `dispatch@demo.com` | **Dispatch Control Center:** Priority pending trip queue (inline **Assign Driver**), available vehicle & driver pool, live GPS radar, geofences. |
+| **Kamrul Islam** | **Mechanic** | `mechanic@demo.com` | **Mechanic Service Bay:** Active work orders (inline status advancement), due preventive services, maintenance-locked vehicle release, open incidents. |
+| **Marcus Vance** | **Driver** | `driver@demo.com` | **Driver Duty Dashboard:** Strict record-level RBAC — sees **only** his assigned trips ready to start (`Start Trip Pre-Check`), active trip (`Capture POD` & `Finish Trip Post-Check`), assigned vehicle fuel/expenses/SOS, and Safety Score + passenger star rating. |
+| **Nadia Karim** | **Employee / User** | `user@demo.com` | **My Trip Portal:** Strict record-level RBAC — requests trips (`Pickup → Drop-off`), watches live 4-step progress (`Pending → Driver Assigned → In Progress → Completed`), tracks only her assigned ride live, and submits **5-star driver ratings** after completion. |
 
-> **Workspace Persistence Note:** In prototype mode, `useAuthStore` persists to `tf-auth`, `useFleetStore` persists to `tf-fleet`, and theme preference persists to `tf-theme` inside the browser's `localStorage`. Switching roles via the top bar updates UI permissions immediately while preserving the same local fleet dataset.
+> **Live Web ↔ Mobile Demo Sync Bridge:** Click the **`SYNC OFF / SYNC LIVE`** pill in the Web Topbar (and tap **Enable Live Web Sync** in Mobile Profile) while both dev servers run locally to synchronize trip requests, driver assignments, trip starts/finishes, PODs, ratings, and alerts live across Web and Mobile via `/api/demo-sync`.
 
 ---
 
@@ -84,15 +85,25 @@ This is the core operational command center modeled after real-time navigation a
   - **Start Live Trip** (launches an available vehicle onto its corridor).
   - **End Active Trip** (triggers the mandatory **Post-Trip Inspection Checklist** before closing the trip).
 
-#### B. Trip Bookings & Approval Workflow (`Bookings` Tab)
-1. Click **Request vehicle** to submit a booking with requester name, department, purpose, requested date, estimated distance (km), preferred vehicle, and driver.
-2. **Automated Conflict Evaluation:** The form checks driver availability against active trips, scheduled weekday shifts, and approved leave ranges (`checkDriverAvailability`).
-3. Users with `dispatch:approve` permission (*Super Admin*, *Fleet Manager*, *Dispatcher*) can **Approve** or **Reject** pending bookings.
-4. Clicking **Dispatch** on an approved booking opens the **Pre-Trip Inspection Checklist** (tyres, lights, brakes, fluids, exterior/body, notes, and damage photo upload). Confirming the walkaround dispatches the vehicle live onto the map.
+#### B. Closed-Loop Trip Request → Admin Assign Driver → Driver Start → POD → Finish → Rate (`Trip Requests` Tab)
+1. **User Requests Trip (`RequestTripDialog`):** Any authorized user (or **Employee / User** `user@demo.com`) enters Pickup Location, Drop-off Destination, Purpose, Date/Time, Passengers, and Estimated km. The booking enters `pending` status without premature driver assignment and notifies Admins immediately.
+2. **Admin Assigns Driver & Vehicle (`AssignDriverDialog`):** Super Admin, Fleet Manager, or Dispatcher reviews the pending request, inspects live driver availability badges (*Available* / *Queued* / *On Leave* + Safety Score) and ready vehicles, and confirms assignment → booking transitions to `assigned` and alerts the Driver & Requester.
+3. **Driver Starts Trip (Pre-Trip Checklist):** The assigned Driver clicks **Start Trip (Pre-Check)** from their Driver Dashboard or `/trips` → completes the 5-point safety walkaround + photos → atomically creates the linked `Trip` (`bookingId`, `driverId`, `preTripChecklist`, destination waypoint), switches vehicle to `on_trip`, and updates booking to `in_progress`.
+4. **Proof of Delivery (POD) & Printable PDF Manifest:** During the trip, clicking **Capture POD** in the Telemetry Inspector opens `WaypointPodDialog` (recipient name, touch/mouse signature canvas, photo). Clicking **Finish Trip (Post-Check)** saves the post-walkaround, completes both `Trip` (`done`) and `TripBooking` (`completed`), and returns the vehicle to `available`. Opening any completed trip in **Trip History** supports interactive **Route Playback** and 1-click **Print / PDF Manifest** export.
+5. **Post-Trip 5-Star Rating:** The Employee rates the completed ride (1–5 stars) on their portal, updating the Driver's average passenger rating badge.
 
-#### C. Proof of Delivery (POD) & Trip History Playback (`Trip History` Tab)
-- Active trips with delivery waypoints support **Proof of Delivery (POD)** capture via `WaypointPodDialog` (recipient name, touch/mouse signature canvas via `SignaturePad`, and delivery photo upload).
-- Completed trips appear in the filterable **Trip History** table (seeded across diverse dates and times so multi-day analytics and reports reflect realistic historical trends). Clicking any completed trip opens the **Interactive Route Playback Modal** (`RoutePlayback`) with a timeline scrubber, speed telemetry, and geofence overlay.
+## 5. Strict Role-Based Access Control (RBAC) — Route & Record Level
+
+Defined in `web/lib/rbac.ts` and enforced at both route level (`AppShell`) and record level (`web/lib/rbac-scope.ts`) across **6 roles** and **15 permissions**:
+
+| Role | Route Scope | Strict Record-Level Data Visibility |
+| :--- | :--- | :--- |
+| **Employee / User** | `/dashboard`, `/trips`, `/settings` | Sees **only** own trip requests, live map tracking **only** for own assigned/active ride (read-only passenger view), own trip history, and personal trip alerts. Direct access to other routes shows an **Access Restricted** guard. |
+| **Driver** | `/dashboard`, `/trips`, `/fuel`, `/maintenance` (SOS only), `/settings` | Sees **only** trips driven by them, bookings assigned to them (never Admin pending queue), own assigned vehicle(s), own fuel/expense/incident logs, and own alerts. |
+| **Mechanic** | `/dashboard`, `/maintenance`, `/vehicles`, `/trips`, `/reports`, `/settings` | Focuses on preventive services, work orders, maintenance holds, and incident alerts. |
+| **Dispatcher** | `/dashboard`, `/trips`, `/drivers`, `/vehicles`, `/reports`, `/settings` | Full dispatch queue, driver assignment, live GPS radar, and geofence controls. |
+| **Fleet Manager** | All operational routes + Audit Log | Full fleet management, compliance vault, fuel anomalies, TCO/CPK, and audit review. |
+| **Super Admin** | All 8 routes + RBAC Admin | Full control including live user role assignment and backup/restore. |
 
 #### D. Geofences (`Geofences` Tab)
 - Monitor pre-seeded city operational zones with real-time boundary crossing detection (`isPointInsideVectorGeofence`).

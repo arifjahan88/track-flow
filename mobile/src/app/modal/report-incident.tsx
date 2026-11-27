@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Pressable,
@@ -15,6 +16,8 @@ import { Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { toIsoDate } from "@/lib/format";
 import { triggerWarningHaptic } from "@/lib/haptics";
+import { getScopedVehicles } from "@/lib/rbac-scope";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import type { IncidentSeverity } from "@/types";
 
@@ -24,15 +27,30 @@ export default function ReportIncidentModalScreen() {
   const theme = useTheme();
   const params = useLocalSearchParams<{ vehicleId?: string }>();
 
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const addIncident = useFleetStore((s) => s.addIncident);
 
-  const [vehicleId, setVehicleId] = useState(
-    params.vehicleId || selectedVehicleId || vehicles[0]?.id || "veh-1"
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
   );
-  const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
+
+  const [vehicleId, setVehicleId] = useState(() => {
+    const requested = params.vehicleId || selectedVehicleId;
+    if (requested && vehicles.some((v) => v.id === requested)) return requested;
+    return vehicles[0]?.id || "veh-1";
+  });
+  const selectedVehicle =
+    vehicles.find((v) => v.id === vehicleId) ?? vehicles[0];
 
   const [severity, setSeverity] = useState<IncidentSeverity>("moderate");
   const [locationLabel, setLocationLabel] = useState(
@@ -41,27 +59,42 @@ export default function ReportIncidentModalScreen() {
   const [description, setDescription] = useState("");
   const [thirdPartyName, setThirdPartyName] = useState("");
   const [estimatedCost, setEstimatedCost] = useState("180");
+  const [photos, setPhotos] = useState<string[]>([]);
+
+  const handlePickPhoto = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.5,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setPhotos((prev) => [...prev, res.assets[0].uri]);
+      }
+    } catch {
+      setPhotos((prev) => [...prev, `incident-photo-${prev.length + 1}.jpg`]);
+    }
+  };
 
   const handleSubmit = () => {
-    if (!locationLabel.trim()) return;
+    if (!locationLabel.trim() || !selectedVehicle) return;
     const assignedDriver = drivers.find(
-      (d) => d.assignedVehicleId === vehicleId
+      (d) => d.assignedVehicleId === selectedVehicle.id
     );
     addIncident({
-      vehicleId,
+      vehicleId: selectedVehicle.id,
       driverId: assignedDriver?.id,
       occurredAt: toIsoDate(),
       severity,
       status: "open",
       locationLabel: locationLabel.trim(),
-      lat: selectedVehicle?.lastKnownLocation?.latitude ?? 23.7798,
-      lng: selectedVehicle?.lastKnownLocation?.longitude ?? 90.4241,
+      lat: selectedVehicle.lastKnownLocation?.latitude ?? 23.7798,
+      lng: selectedVehicle.lastKnownLocation?.longitude ?? 90.4241,
       description:
         description.trim() ||
         "Roadside traffic contact reported from Driver Mobile Cockpit.",
       thirdPartyName: thirdPartyName.trim() || undefined,
       estimatedCost: Number(estimatedCost) || undefined,
-      photos: [],
+      photos,
     });
     triggerWarningHaptic();
     router.back();
@@ -229,6 +262,15 @@ export default function ReportIncidentModalScreen() {
             ]}
           />
         </View>
+
+        <Button
+          label={`+ Attach Damage Photo (${photos.length})`}
+          variant="secondary"
+          size="md"
+          fullWidth
+          icon={<Ionicons name="camera-outline" size={16} color={theme.text} />}
+          onPress={handlePickPhoto}
+        />
 
         <Button
           label="Broadcast SOS Incident Report"

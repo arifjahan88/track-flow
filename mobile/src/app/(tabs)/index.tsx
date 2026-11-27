@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopStatusHeader } from "@/components/layout/top-status-header";
@@ -6,10 +7,15 @@ import { DriverCockpitSheet } from "@/components/map/driver-cockpit-sheet";
 import { GeofenceAlertToast } from "@/components/map/geofence-alert-toast";
 import { RealFleetMap } from "@/components/map/real-fleet-map";
 import { SpeedCompassHud } from "@/components/map/speed-compass-hud";
+import { Button } from "@/components/ui/button";
 import { useLiveSimulation } from "@/hooks/use-live-simulation";
 import { useTheme } from "@/hooks/use-theme";
 import { can } from "@/lib/rbac";
-import { getScopedTrips, getScopedVehicles } from "@/lib/rbac-scope";
+import {
+  getScopedBookings,
+  getScopedTrips,
+  getScopedVehicles,
+} from "@/lib/rbac-scope";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
@@ -74,8 +80,15 @@ export default function MapCockpitScreen() {
     if (vehicles.some((v) => v.id === selectedVehicleId)) {
       return selectedVehicleId;
     }
-    return vehicles[0]?.id ?? "veh-1";
+    return vehicles[0]?.id ?? "";
   }, [vehicles, selectedVehicleId]);
+
+  const waitingAssignedBooking = useMemo(() => {
+    if (activeRole !== "driver") return undefined;
+    return getScopedBookings(currentUser, drivers, bookings).find(
+      (b) => b.status === "assigned"
+    );
+  }, [activeRole, currentUser, drivers, bookings]);
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.id === effectiveSelectedId),
@@ -91,6 +104,55 @@ export default function MapCockpitScreen() {
   );
 
   const selectedFrame = frames[effectiveSelectedId];
+
+  if (vehicles.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={{ paddingTop: Math.max(insets.top + 4, 10), paddingHorizontal: 12 }}>
+          <TopStatusHeader floating />
+        </View>
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 28,
+            gap: 12,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "800",
+              color: theme.text,
+              textAlign: "center",
+            }}
+          >
+            {activeRole === "employee"
+              ? "No Active Ride to Track Yet"
+              : "No Assigned Vehicles Active"}
+          </Text>
+          <Text
+            style={{
+              fontSize: 13,
+              lineHeight: 19,
+              color: theme.textSecondary,
+              textAlign: "center",
+            }}
+          >
+            {activeRole === "employee"
+              ? "Once Admin assigns a driver to your trip request and the driver departs, your live vehicle radar will appear right here."
+              : "Vehicles assigned to your account will appear here."}
+          </Text>
+          <Button
+            label="Go to My Trips"
+            variant="primary"
+            onPress={() => router.navigate("/(tabs)/dashboard")}
+          />
+        </View>
+      </View>
+    );
+  }
 
   const handleCycleSimSpeed = () => {
     const next =
@@ -186,6 +248,7 @@ export default function MapCockpitScreen() {
           drivers={drivers}
           selectedVehicle={selectedVehicle}
           activeTrip={activeTrip}
+          assignedBooking={waitingAssignedBooking}
           frame={selectedFrame}
           frames={frames}
           speedKmh={

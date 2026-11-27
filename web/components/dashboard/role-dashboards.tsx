@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Square,
+  Star,
   Truck,
   UserCheck,
   Users,
@@ -113,6 +114,7 @@ export function EmployeeDashboard({ onOpenRequestTrip }: RoleDashboardActions) {
   const vehicles = useFleetStore((s) => s.vehicles);
   const drivers = useFleetStore((s) => s.drivers);
   const removeBooking = useFleetStore((s) => s.removeBooking);
+  const rateCompletedBooking = useFleetStore((s) => s.rateCompletedBooking);
 
   const vehiclesById = new Map(vehicles.map((v) => [v.id, v]));
   const driversById = new Map(drivers.map((d) => [d.id, d]));
@@ -333,6 +335,40 @@ export function EmployeeDashboard({ onOpenRequestTrip }: RoleDashboardActions) {
                       </span>
                     </div>
                   ) : null}
+
+                  {/* Employee Post-Trip 5-Star Rating */}
+                  {b.status === "completed" ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs">
+                      <span className="font-medium text-muted-foreground">
+                        {b.rating
+                          ? `Your rating: ${b.rating}/5 stars`
+                          : "Rate your driver for this trip:"}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            aria-label={`Rate ${star} stars`}
+                            onClick={() => {
+                              rateCompletedBooking(b.id, star);
+                              toast.success(`Thank you! Rated ${star}/5 stars.`);
+                            }}
+                            className="rounded-md p-1 transition-colors hover:bg-muted"
+                          >
+                            <Star
+                              className={cn(
+                                "size-4",
+                                (b.rating ?? 0) >= star
+                                  ? "fill-amber-400 text-amber-400"
+                                  : "text-muted-foreground/50"
+                              )}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -377,6 +413,19 @@ export function DriverDashboard({
   const myAssignedBookings = bookings.filter(
     (b) => b.status === "assigned" && (!activeDriver || b.driverId === activeDriver.id)
   );
+  const myRatedBookings = bookings.filter(
+    (b) =>
+      b.status === "completed" &&
+      typeof b.rating === "number" &&
+      (!activeDriver || b.driverId === activeDriver.id)
+  );
+  const avgPassengerRating =
+    myRatedBookings.length > 0
+      ? (
+          myRatedBookings.reduce((sum, b) => sum + (b.rating ?? 0), 0) /
+          myRatedBookings.length
+        ).toFixed(1)
+      : null;
   const myActiveTrips = trips.filter(
     (t) =>
       t.status !== "done" &&
@@ -597,6 +646,12 @@ export function DriverDashboard({
               <span className="flex items-center gap-2">
                 <ShieldCheck className="size-4 text-primary" />
                 My Safety Score
+                {avgPassengerRating ? (
+                  <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/12 text-[11px] text-amber-600 dark:text-amber-300">
+                    <Star className="size-3 fill-amber-400 text-amber-400" />
+                    {avgPassengerRating} ({myRatedBookings.length})
+                  </Badge>
+                ) : null}
               </span>
               <span className="fp-telemetry text-lg font-bold text-primary">
                 {safety.score}/100 · {safety.grade}

@@ -7,7 +7,7 @@
 
 ## 1. Executive Pitch (The 60-Second Case for the Meeting)
 
-TrackFlow already has a feature-complete, high-craft **Web Operations Console** (9 routes, 30+ domain components, 14 RBAC permissions) and **Mobile Driver Cockpit** (5 adaptive tabs, 7 field modals, road-aligned live maps, POD signatures, OBD-II telemetry). Both applications share a remarkably consistent TypeScript domain model covering **15+ fleet entities**.
+TrackFlow already has a feature-complete, high-craft **Web Operations Console** (9 routes, 6 Role-Wise Dashboards, strict route & record-level RBAC across 15 permissions, live POD signatures, printable PDF trip manifests, and a live local Web↔Mobile sync bridge) and **Mobile Driver & Employee App** (6-role Home Dashboard, role-scoped bottom tabs, 8 field modals with photo evidence, road-aligned live maps, POD signatures, and post-trip 5-star ratings). Both applications share a unified TypeScript domain model covering **15+ fleet entities** and a closed-loop **Employee Request → Admin Assign Driver → Driver Start (Pre-Check) → POD → Finish (Post-Check) → Rate** state machine.
 
 To take TrackFlow from an interactive single-device prototype to a reliable, multi-tenant, real-time commercial fleet platform, **the backend architecture is our single most critical engineering decision**. Fleet management is **not** a standard CRUD web app — it is a **hybrid workload** combining:
 1. **Strict ACID Business Transactions** (dispatch locking so two dispatchers never assign the same vehicle/driver, compliance governance, financial TCO, RBAC, immutable audit trails), AND

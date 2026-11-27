@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Pressable,
@@ -15,6 +16,8 @@ import { Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { toIsoDate } from "@/lib/format";
 import { triggerSuccessHaptic } from "@/lib/haptics";
+import { getScopedVehicles } from "@/lib/rbac-scope";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 import type { ExpenseCategory } from "@/types";
 
@@ -30,19 +33,51 @@ export default function QuickExpenseModalScreen() {
   const theme = useTheme();
   const params = useLocalSearchParams<{ vehicleId?: string }>();
 
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const addExpense = useFleetStore((s) => s.addExpense);
 
-  const [vehicleId, setVehicleId] = useState(
-    params.vehicleId || selectedVehicleId || vehicles[0]?.id || "veh-1"
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
   );
+
+  const [vehicleId, setVehicleId] = useState(() => {
+    const requested = params.vehicleId || selectedVehicleId;
+    if (requested && vehicles.some((v) => v.id === requested)) return requested;
+    return vehicles[0]?.id || "veh-1";
+  });
   const [category, setCategory] = useState<ExpenseCategory>("Tolls");
   const [amount, setAmount] = useState("15.00");
   const [costCenter, setCostCenter] = useState("Logistics-Expressway");
   const [description, setDescription] = useState(
     "Dhaka Elevated Expressway freight toll pass"
   );
+  const [receiptPhoto, setReceiptPhoto] = useState<string | undefined>(
+    undefined
+  );
+
+  const handlePickReceipt = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.5,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setReceiptPhoto(res.assets[0].uri);
+      }
+    } catch {
+      setReceiptPhoto("expense-receipt-sample.jpg");
+    }
+  };
 
   const handleSave = () => {
     const numAmount = Math.max(0.5, Number(amount) || 0);
@@ -54,6 +89,7 @@ export default function QuickExpenseModalScreen() {
       amount: numAmount,
       costCenter: costCenter.trim() || "Operations",
       description: description.trim(),
+      receiptPhotoDataUrl: receiptPhoto,
     });
     triggerSuccessHaptic();
     router.back();
@@ -202,6 +238,15 @@ export default function QuickExpenseModalScreen() {
             ]}
           />
         </View>
+
+        <Button
+          label={receiptPhoto ? "✓ Receipt Photo Attached" : "+ Attach Receipt Photo"}
+          variant="secondary"
+          size="md"
+          fullWidth
+          icon={<Ionicons name="camera-outline" size={16} color={theme.text} />}
+          onPress={handlePickReceipt}
+        />
 
         <Button
           label="Save Operating Expense"

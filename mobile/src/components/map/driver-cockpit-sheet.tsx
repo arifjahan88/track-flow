@@ -30,6 +30,7 @@ import type {
   Driver,
   LiveVehicleFrame,
   Trip,
+  TripBooking,
   TurnManeuver,
   UserRole,
   Vehicle,
@@ -51,6 +52,7 @@ interface DriverCockpitSheetProps {
   drivers: Driver[];
   selectedVehicle: Vehicle | undefined;
   activeTrip: Trip | undefined;
+  assignedBooking?: TripBooking;
   frame: LiveVehicleFrame | undefined;
   frames: Record<string, LiveVehicleFrame>;
   speedKmh?: number;
@@ -77,6 +79,7 @@ export function DriverCockpitSheet({
   drivers,
   selectedVehicle,
   activeTrip,
+  assignedBooking,
   frame,
   frames,
   speedKmh = 0,
@@ -430,7 +433,60 @@ export function DriverCockpitSheet({
           </View>
         </View>
 
-        {/* Primary Trip Action Buttons */}
+        {/* Driver Assigned Booking Banner (1-Tap Start from Map) */}
+        {role === "driver" && assignedBooking ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              borderRadius: Radius.md,
+              borderWidth: 1,
+              borderColor: theme.primary,
+              backgroundColor: theme.cardElevated,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ fontSize: 10, fontWeight: "800", color: theme.primary }}
+              >
+                ASSIGNED BY ADMIN · READY TO START
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={{ fontSize: 12, fontWeight: "700", color: theme.text }}
+              >
+                {assignedBooking.purpose}
+              </Text>
+            </View>
+            <Button
+              label="Start"
+              size="sm"
+              variant="emerald"
+              onPress={() =>
+                router.push(
+                  `/modal/checklist?phase=pre&bookingId=${assignedBooking.id}&vehicleId=${assignedBooking.vehicleId ?? selectedVehicle.id}&purpose=${encodeURIComponent(assignedBooking.purpose)}`
+                )
+              }
+            />
+          </View>
+        ) : null}
+
+        {/* Primary Trip Action Buttons (Hidden for Read-Only Employee Passenger) */}
+        {role === "employee" ? (
+          <View style={styles.ctaRow}>
+            <Button
+              label="Back to My Trip Requests"
+              variant="secondary"
+              size="md"
+              fullWidth
+              onPress={() => router.navigate("/(tabs)/dashboard")}
+            />
+          </View>
+        ) : (
         <View style={styles.ctaRow}>
           {isMoving ? (
             <>
@@ -513,9 +569,10 @@ export function DriverCockpitSheet({
             />
           )}
         </View>
+        )}
 
         {/* Expanded Secondary Telemetry, Quick Actions & Unit Switcher */}
-        {expanded ? (
+        {expanded && role !== "employee" ? (
           <ScrollView
             style={{ maxHeight: Math.min(250, height * 0.32) }}
             contentContainerStyle={styles.expandedContent}

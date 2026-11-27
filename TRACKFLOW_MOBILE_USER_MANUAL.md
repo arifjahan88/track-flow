@@ -40,17 +40,18 @@ The authentication screen follows a clean top-to-bottom hierarchy:
 1. **Top Brand Header & Theme Toggle:** TrackFlow Mobile branding with instant Dark / Light mode toggle.
 2. **Live Telemetry Hero Card:** Highlights Real GPS & Live Street Map capabilities with a pulsing live status indicator.
 3. **Centered Credentials Card:** Segmented **Sign In / Create Account** switcher, email/password inputs (plus full name and role chip selector when registering), and the primary cyan **Sign In to Cockpit** button.
-4. **Collapsible Bottom "1-Tap Quick Demo Accounts" Drawer:** Placed cleanly at the bottom and collapsed by default (`5 ROLES READY` badge + chevron). Tapping the header expands all five pre-seeded personas with haptic feedback:
+4. **Collapsible Bottom "1-Tap Quick Demo Accounts" Drawer:** Placed cleanly at the bottom and collapsed by default (`6 ROLES READY` badge + chevron). Tapping the header expands all six pre-seeded personas with haptic feedback:
 
-| Persona | Role | Email | Adaptive Tab Labels & Primary Access |
+| Persona | Role | Email | Role-Scoped Bottom Tabs & Home Dashboard |
 | :--- | :--- | :--- | :--- |
-| **Marcus Vance** | **Driver** *(Primary)* | `driver@demo.com` | **Drive Map**, **Trips**, **Field Logs**, **Fleet Hub**, **Profile** — auto-locks onto assigned vehicle (`veh-1`). |
-| **David Park** | **Dispatcher** | `dispatch@demo.com` | **Live Map**, **Dispatch**, **Field Logs**, **Fleet Hub**, **Profile** — booking approvals & live fleet monitoring. |
-| **Carlos Mendez** | **Mechanic** | `mechanic@demo.com` | **Live Map**, **Trips**, **Service Bay**, **Fleet Hub**, **Profile** — work order advancement & preventive service completion. |
-| **Sarah Chen** | **Fleet Manager** | `manager@demo.com` | **Live Map**, **Trips**, **Field Logs**, **Fleet Hub**, **Profile** — asset registration, compliance vault, drivers & TCO. |
-| **Alex Morgan** | **Super Admin** | `demo@demo.com` | Full multi-role visibility, RBAC permission inspection, and audit review. |
+| **Marcus Vance** | **Driver** *(Primary)* | `driver@demo.com` | **Home (Driver Duty Hub)**, **Drive Map**, **Trips**, **Field Logs**, **Profile** — strictly scoped to his assigned trips, assigned bookings, assigned vehicle(s), fuel/expenses/SOS (with photo upload), and personal alerts. |
+| **Nadia Karim** | **Employee / User** | `user@demo.com` | **My Trips (Employee Portal)**, **Live Track** (read-only passenger view of her active ride), **Profile** — submit trip requests, watch live 4-step status, track driver live, and rate completed trips (1–5 stars). |
+| **Sarah Chen** | **Dispatcher** | `dispatch@demo.com` | **Home (Dispatch Control)**, **Live Map**, **Dispatch**, **Fleet Hub**, **Profile** — 1-tap **Assign Driver** modal with shift/leave conflict checks. |
+| **Farhana Rahman** | **Fleet Manager** | `manager@demo.com` | **Home (Fleet Manager Hub)**, **Live Map**, **Dispatch**, **Fleet Hub**, **Profile** — pending approvals, compliance & fuel risk signals, TCO/CPK. |
+| **Kamrul Islam** | **Mechanic** | `mechanic@demo.com` | **Home (Service Bay Hub)**, **Service Bay**, **Fleet Hub**, **Profile** — inline Work Order status advancement, due services, bay release. |
+| **Alex Morgan** | **Super Admin** | `demo@demo.com` | **Home (Super Admin Command)**, **Live Map**, **Dispatch**, **Fleet Hub**, **Profile** — full visibility, RBAC permissions, and audit log. |
 
-*(Manual password for all demo accounts: `demo1234`.)*
+*(Manual password for all 6 demo accounts: `demo1234`. Enable **Live Web Sync** in Profile to sync trip requests, assignments, and live trips in real time with TrackFlow Web at `http://localhost:3000/api/demo-sync`.)*
 
 ---
 
@@ -60,25 +61,27 @@ TrackFlow Mobile uses **Expo Router** (`mobile/src/app/`) with 5 bottom navigati
 
 ### 3.1 Primary Tab Screens (`mobile/src/app/(tabs)/`)
 
-| File / Route | Tab Title (Role-Adaptive) | Core Features & User Interactions |
+| File / Route | Tab Title (Role-Adaptive) | Core Features & Strict RBAC Scope |
 | :--- | :--- | :--- |
-| `index.tsx` | **Drive Map** *(Driver)* / **Live Map** *(Others)* | Full-screen road-aligned map (`RealFleetMap`), city region switcher (**Dhaka Metro** / **SF Bay Hub**), **Street Simulation** vs **Real Device GPS** toggle, `1× / 2× / 4×` speed selector, camera follow/fit-route HUD (`SpeedCompassHud`), geofence entry alert toast (`GeofenceAlertToast`), and expandable **Driver Cockpit Sheet** (`DriverCockpitSheet`) with duty status toggle, live speed/heading, turn-by-turn maneuver banner, OBD-II readings, and quick action shortcuts. |
-| `trips.tsx` | **Trips** / **Dispatch** *(Dispatcher)* | Three segmented sub-views: **Active Manifest** (live trip status, pause/resume, `+ Stop` waypoint creator, `POD Sign` launch, `End Trip`), **Bookings** (`+ Request Trip` form, role-gated `Approve / Reject` buttons, `Launch Pre-Trip Inspection & Dispatch`), and **History** (completed trips list with interactive route progress scrubber). |
-| `logs.tsx` | **Field Logs** / **Service Bay** *(Mechanic)* | Four segmented sub-views: **Fuel** (`+ Log Fuel Fill-Up`, km/L efficiency badges, tank-capacity & efficiency anomaly flags), **Expenses** (`+ Log Toll / Parking / Allowance`), **Service** (Work Orders with 1-tap `Advance Status` progression `open → in_progress → waiting_parts → completed` + preventive maintenance `Mark Service Completed`), and **SOS** (active & resolved roadside incident log + quick SOS launcher). |
-| `fleet.tsx` | **Fleet Hub** | Four segmented sub-views: **Vehicles** (`Register New Fleet Vehicle` inline form, lifecycle status badges, `Profile & Lifecycle` modal link, `Track on Live Map` camera jump), **Compliance** (vehicle documents with 30/15/7-day expiry bands), **Drivers** (license badges, safety scores, trip stats), and **CPK / TCO** (per-vehicle cost breakdown & 30-day utilization metrics). |
-| `profile.tsx` | **Profile** | Appearance switcher (`Dark`, `Light`, `System`), active region toggle (`Dhaka Metro` / `SF Bay Hub`), driver safety scorecard & weekday shift list with **Log Leave**, instant **Role Switcher** (for multi-persona demos), 14-permission RBAC viewer, recent audit activity stream, **Reset Demo Fleet Data**, and **Sign Out**. |
+| `dashboard.tsx` | **Home** / **My Trips** *(Employee)* | Default landing screen (`unstable_settings.initialRouteName = "dashboard"`): **Role-Wise Dashboard** tailored to all 6 personas — Employee `+ Request a Trip` + 5-star rating; Driver `Assigned Trips Ready to Start` (1-tap Pre-Check) & `Finish Trip`; Admin/Dispatcher `Pending Requests` (1-tap `Assign Driver`); Mechanic inline Work Order advancement & vehicle release. |
+| `index.tsx` | **Drive Map** / **Live Track** / **Live Map** | Full-screen road-aligned map (`RealFleetMap`) with Dhaka & SF regions, Simulation vs Real GPS toggle, and `DriverCockpitSheet`. Strictly scoped via `rbac-scope.ts`: Drivers see only their assigned vehicles + waiting assigned-trip banner; Employees see a clean read-only Passenger Live Ride card (or empty state before departure). |
+| `trips.tsx` | **Trips** / **Dispatch** *(Dispatcher)* | Three segmented sub-views (**Active Manifest**, **Bookings**, **History**) strictly scoped per role: Drivers see only their assigned bookings & own trips; Admins assign pending requests via `/modal/assign-booking`. |
+| `logs.tsx` | **Field Logs** / **Service Bay** *(Mechanic)* | Segmented sub-views dynamically filtered by role: Drivers see **Fuel**, **Expenses**, and **SOS** filtered to their assigned vehicles (Service Bay hidden); Mechanics see **Service** & **SOS**. |
+| `fleet.tsx` | **Fleet Hub** *(Hidden for Driver & Employee)* | **Vehicles**, **Compliance** (`30d/15d/7d`), **Drivers**, and **CPK / TCO** analytics for Admins, Managers, Dispatchers, and Mechanics. |
+| `profile.tsx` | **Profile** | Appearance (`Dark / Light / System`), City Region, Driver Safety & Shifts, **6-Role Switcher**, RBAC permission viewer, **Enable Live Web Sync** bridge toggle, Admin-only Audit Log & Reset, and Sign Out. |
 
 ### 3.2 Operational Modals (`mobile/src/app/modal/`)
 
 | Modal Route | Triggered From | Purpose & Data Captured |
 | :--- | :--- | :--- |
-| `/modal/notifications` | Top Header Bell Icon | Filterable alert center (**All**, **Unread**, **Critical**, **Updates**), severity badges, plate chips, relative timestamps, **View on Live Map** vehicle focus jump, per-item **Mark Read**, and a **Sticky Bottom Footer Bar** with **Mark All as Read (N)** button. Built with `react-native-safe-area-context`. |
-| `/modal/checklist` | Cockpit / Dispatch / End Trip | Mandatory 5-point **Pre-Trip** or **Post-Trip** walkaround inspection (Tyres, Lights, Brakes, Fluids, Exterior/Mirrors), notes field, and photo library evidence picker (`expo-image-picker`). |
-| `/modal/pod` | Active Trip Waypoint | **Proof of Delivery (POD)** capture: recipient name, finger-drawn **Signature Canvas** (`SignatureCanvas`), optional delivery photo attachment, and **Save POD & Mark Stop Arrived**. |
-| `/modal/quick-fuel` | Field Logs / Cockpit | Rapid fill-up logger: vehicle selector, litres, price per litre, auto-calculated total, odometer km, fuel station, and full-tank toggle (feeds anomaly detection). |
-| `/modal/quick-expense` | Field Logs / Cockpit | Rapid expense logger: vehicle selector, category (*Tolls*, *Parking*, *Fines*, *Driver allowance*, *Other*), amount, cost center, and reference note. |
-| `/modal/report-incident` | Field Logs → SOS / Cockpit | **Roadside SOS Reporter**: vehicle selector, severity (*Minor*, *Moderate*, *Major*), location label, description, third-party info, estimated cost, and **Broadcast SOS Incident Report** (creates incident record + critical fleet alert). |
-| `/modal/vehicle-details` | Fleet Hub → Vehicles | Deep asset inspector showing specs (VIN, make/model, engine hours, tank capacity, odometer), lifecycle status transition buttons, compliance documents, and direct **Track on Live Map** jump. |
+| `/modal/assign-booking` | Home / Dispatch Pending Request | **Admin Driver & Vehicle Assignment**: conflict-checked driver availability badges (`Available` / `Queued` / `On Leave` + Safety Score), ready vehicle selector, and dispatch notes. |
+| `/modal/notifications` | Top Header Bell Icon | Strictly role-scoped alert center (**All**, **Unread**, **Critical**, **Updates**), **View on Live Map** jump, and sticky bottom **Mark All as Read** footer. |
+| `/modal/checklist` | Home / Cockpit / Trips | Mandatory 5-point **Pre-Trip** (`startAssignedBooking` linked by `bookingId`) or **Post-Trip** (`endActiveTripForVehicle` auto-completing linked booking) walkaround + photo attachments. |
+| `/modal/pod` | Active Trip Waypoint | **Proof of Delivery (POD)** capture: recipient name, finger-drawn **Signature Canvas**, and optional delivery photo. |
+| `/modal/quick-fuel` | Field Logs / Home / Cockpit | RBAC-scoped fill-up logger (Drivers pick only assigned vehicles) with live tank-capacity warning and **+ Attach Receipt Photo** (`expo-image-picker`). |
+| `/modal/quick-expense` | Field Logs / Home / Cockpit | RBAC-scoped expense logger (*Tolls*, *Parking*, *Fines*, *Allowance*, *Other*) with **+ Attach Receipt Photo**. |
+| `/modal/report-incident` | Field Logs → SOS / Home / Cockpit | RBAC-scoped **Roadside SOS Reporter** with severity, location/GPS lock, third-party info, and **+ Attach Damage Photo**. |
+| `/modal/vehicle-details` | Fleet Hub → Vehicles | Deep asset inspector showing specs, lifecycle controls, compliance docs, and **Track on Live Map**. |
 
 ---
 

@@ -65,6 +65,7 @@ export default function RoleDashboardScreen() {
   const addBooking = useFleetStore((s) => s.addBooking);
   const rejectBooking = useFleetStore((s) => s.rejectBooking);
   const removeBooking = useFleetStore((s) => s.removeBooking);
+  const rateCompletedBooking = useFleetStore((s) => s.rateCompletedBooking);
   const setSelectedVehicle = useFleetStore((s) => s.setSelectedVehicle);
   const updateWorkOrderStatus = useFleetStore((s) => s.updateWorkOrderStatus);
   const completeMaintenanceRecord = useFleetStore(
@@ -422,6 +423,47 @@ export default function RoleDashboardScreen() {
                       />
                     ) : null}
                   </View>
+                  {b.status === "completed" ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginTop: 6,
+                        paddingTop: 6,
+                        borderTopWidth: 1,
+                        borderTopColor: theme.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "700",
+                          color: theme.textSecondary,
+                        }}
+                      >
+                        {b.rating
+                          ? `Rated ${b.rating}/5 ★`
+                          : "Rate your driver:"}
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 4 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Button
+                            key={star}
+                            label={`${star}★`}
+                            size="sm"
+                            variant={
+                              (b.rating ?? 0) >= star ? "primary" : "secondary"
+                            }
+                            onPress={() => {
+                              triggerSuccessHaptic();
+                              rateCompletedBooking(b.id, star);
+                            }}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                 </AnimatedCard>
               );
             })}

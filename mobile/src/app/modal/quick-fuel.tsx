@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Pressable,
@@ -17,20 +18,38 @@ import { Fonts, Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { formatCurrency, toIsoDate } from "@/lib/format";
 import { triggerSuccessHaptic } from "@/lib/haptics";
+import { getScopedVehicles } from "@/lib/rbac-scope";
+import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
 
 export default function QuickFuelModalScreen() {
   const theme = useTheme();
   const params = useLocalSearchParams<{ vehicleId?: string }>();
 
-  const vehicles = useFleetStore((s) => s.vehicles);
+  const users = useAuthStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  const allVehicles = useFleetStore((s) => s.vehicles);
+  const drivers = useFleetStore((s) => s.drivers);
+  const bookings = useFleetStore((s) => s.bookings);
+  const trips = useFleetStore((s) => s.trips);
   const selectedVehicleId = useFleetStore((s) => s.selectedVehicleId);
   const addFuelLog = useFleetStore((s) => s.addFuelLog);
 
-  const [vehicleId, setVehicleId] = useState(
-    params.vehicleId || selectedVehicleId || vehicles[0]?.id || "veh-1"
+  const vehicles = useMemo(
+    () =>
+      getScopedVehicles(currentUser, drivers, allVehicles, bookings, trips),
+    [currentUser, drivers, allVehicles, bookings, trips]
   );
-  const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
+
+  const [vehicleId, setVehicleId] = useState(() => {
+    const requested = params.vehicleId || selectedVehicleId;
+    if (requested && vehicles.some((v) => v.id === requested)) return requested;
+    return vehicles[0]?.id || "veh-1";
+  });
+  const selectedVehicle =
+    vehicles.find((v) => v.id === vehicleId) ?? vehicles[0];
 
   const [liters, setLiters] = useState("65");
   const [pricePerLiter, setPricePerLiter] = useState("1.66");
@@ -39,6 +58,9 @@ export default function QuickFuelModalScreen() {
   );
   const [station, setStation] = useState("Shell Fleet Hub #14 (Tejgaon)");
   const [fullTank, setFullTank] = useState(true);
+  const [receiptPhoto, setReceiptPhoto] = useState<string | undefined>(
+    undefined
+  );
 
   const numLiters = Math.max(0, Number(liters) || 0);
   const numPrice = Math.max(0, Number(pricePerLiter) || 0);
@@ -46,20 +68,35 @@ export default function QuickFuelModalScreen() {
   const tankCap = selectedVehicle?.tankCapacityLiters ?? 140;
   const overCapacity = numLiters > tankCap;
 
+  const handlePickReceipt = async () => {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.5,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setReceiptPhoto(res.assets[0].uri);
+      }
+    } catch {
+      setReceiptPhoto("fuel-receipt-sample.jpg");
+    }
+  };
+
   const handleSave = () => {
-    if (numLiters <= 0) return;
+    if (numLiters <= 0 || !selectedVehicle) return;
     addFuelLog({
-      vehicleId,
+      vehicleId: selectedVehicle.id,
       date: toIsoDate(),
       liters: numLiters,
       pricePerLiter: numPrice,
       totalCost,
       odometerKm: Math.max(
-        selectedVehicle?.odometerKm ?? 0,
+        selectedVehicle.odometerKm ?? 0,
         Number(odometerKm) || 0
       ),
       fullTank,
       station: station.trim() || "Fleet Fuel Station",
+      receiptPhotoDataUrl: receiptPhoto,
     });
     triggerSuccessHaptic();
     router.back();
@@ -253,6 +290,15 @@ export default function QuickFuelModalScreen() {
             </View>
           </View>
         </View>
+
+        <Button
+          label={receiptPhoto ? "✓ Receipt Photo Attached" : "+ Attach Receipt Photo"}
+          variant="secondary"
+          size="md"
+          fullWidth
+          icon={<Ionicons name="camera-outline" size={16} color={theme.text} />}
+          onPress={handlePickReceipt}
+        />
 
         <Button
           label={`Save Fuel Log (${formatCurrency(totalCost)})`}

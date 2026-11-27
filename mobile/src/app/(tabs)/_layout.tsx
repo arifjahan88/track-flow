@@ -4,6 +4,7 @@ import { Tabs, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Fonts } from "@/constants/theme";
 import { useHydrated } from "@/hooks/use-hydrated";
+import { useMobileDemoSync } from "@/hooks/use-demo-sync";
 import { useTheme } from "@/hooks/use-theme";
 import { canSeeMobileTab } from "@/lib/rbac";
 import { useAuthStore } from "@/store/auth-store";
@@ -16,6 +17,7 @@ export default function TabsLayout() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const hydrated = useHydrated();
+  useMobileDemoSync();
   const currentUserId = useAuthStore((s) => s.currentUserId);
   const users = useAuthStore((s) => s.users);
 

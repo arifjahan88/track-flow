@@ -6,6 +6,7 @@ import {
   Gauge,
   MapPin,
   Navigation,
+  PenTool,
   Play,
   Route,
   Square,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import type {
   Driver,
   LiveVehicleFrame,
+  TripWaypoint,
   Vehicle,
   VehicleLifecycleStatus,
 } from "@/types";
@@ -31,6 +33,9 @@ interface TelemetryInspectorProps {
   selectedVehicle: Vehicle | undefined;
   frame: LiveVehicleFrame | undefined;
   frames: Record<string, LiveVehicleFrame>;
+  canOperate?: boolean;
+  pendingWaypoint?: TripWaypoint;
+  onCapturePod?: (waypoint: TripWaypoint) => void;
   onSelectVehicle: (vehicleId: string) => void;
   onStartTrip: (vehicleId: string) => void;
   onEndTrip: (vehicleId: string) => void;
@@ -73,6 +78,9 @@ export function TelemetryInspector({
   selectedVehicle,
   frame,
   frames,
+  canOperate = true,
+  pendingWaypoint,
+  onCapturePod,
   onSelectVehicle,
   onStartTrip,
   onEndTrip,
@@ -187,7 +195,8 @@ export function TelemetryInspector({
               </span>
             </div>
             <p className="fp-telemetry mt-1 text-xs font-semibold">
-              {lat.toFixed(5)}° N, {Math.abs(lng).toFixed(5)}° W
+              {Math.abs(lat).toFixed(5)}° {lat >= 0 ? "N" : "S"},{" "}
+              {Math.abs(lng).toFixed(5)}° {lng >= 0 ? "E" : "W"}
             </p>
           </div>
         </div>
@@ -266,39 +275,58 @@ export function TelemetryInspector({
           ) : null}
         </div>
 
-        {/* Primary Trip Action Button */}
-        <div>
-          {isMoving ? (
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => onEndTrip(selectedVehicle.id)}
-              className="h-10 w-full gap-2 rounded-xl font-semibold"
-            >
-              <Square className="size-3.5 fill-current" />
-              End Active Trip
-            </Button>
-          ) : isLocked ? (
-            <Button
-              type="button"
-              disabled
-              variant="outline"
-              className="h-10 w-full gap-2 rounded-xl border-amber-500/30 text-amber-500"
-            >
-              <Wrench className="size-4" />
-              In Maintenance Bay (Locked)
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={() => onStartTrip(selectedVehicle.id)}
-              className="h-10 w-full gap-2 rounded-xl bg-cyan-500 font-semibold text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:bg-cyan-400"
-            >
-              <Play className="size-3.5 fill-current" />
-              Start Live Trip on {route.code}
-            </Button>
-          )}
-        </div>
+        {/* Primary Trip Action Buttons (Operators Only; Passenger Sees Read-Only Status) */}
+        {canOperate ? (
+          <div className="space-y-2">
+            {isMoving && pendingWaypoint && onCapturePod ? (
+              <Button
+                type="button"
+                onClick={() => onCapturePod(pendingWaypoint)}
+                className="h-10 w-full gap-2 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <PenTool className="size-3.5" />
+                Capture POD · {pendingWaypoint.label}
+              </Button>
+            ) : null}
+
+            {isMoving ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => onEndTrip(selectedVehicle.id)}
+                className="h-10 w-full gap-2 rounded-xl font-semibold"
+              >
+                <Square className="size-3.5 fill-current" />
+                End Active Trip
+              </Button>
+            ) : isLocked ? (
+              <Button
+                type="button"
+                disabled
+                variant="outline"
+                className="h-10 w-full gap-2 rounded-xl border-amber-500/30 text-amber-500"
+              >
+                <Wrench className="size-4" />
+                In Maintenance Bay (Locked)
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => onStartTrip(selectedVehicle.id)}
+                className="h-10 w-full gap-2 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <Play className="size-3.5 fill-current" />
+                Start Live Trip on {route.code}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/8 px-3 py-2.5 text-xs text-muted-foreground">
+            Live passenger tracking view — assigned driver{" "}
+            <strong className="text-foreground">{driverName}</strong> operates
+            this vehicle.
+          </div>
+        )}
 
         {/* Fleet Selector Roster */}
         <div className="pt-1">

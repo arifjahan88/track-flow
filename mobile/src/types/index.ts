@@ -313,6 +313,8 @@ export interface TripBooking {
   completedAt?: string;
   tripId?: string;
   rejectionReason?: string;
+  rating?: number;
+  feedback?: string;
   notes?: string;
   createdAt: string;
 }

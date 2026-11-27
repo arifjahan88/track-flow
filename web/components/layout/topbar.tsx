@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Radio,
+  RefreshCw,
   ShieldCheck,
   Truck,
   User,
@@ -31,6 +32,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuthStore } from "@/store/auth-store";
 import { useFleetStore } from "@/store/fleet-store";
+import { useDemoSync } from "@/hooks/use-demo-sync";
 import { ROLE_LABELS } from "@/lib/rbac";
 import { getScopedAlerts, getScopedVehicles } from "@/lib/rbac-scope";
 import type { UserRole } from "@/types";
@@ -130,6 +132,8 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const { enabled: syncEnabled, status: syncStatus, toggleEnabled: toggleSync } =
+    useDemoSync();
 
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
@@ -200,8 +204,35 @@ export function Topbar({ onOpenMobileMenu }: TopbarProps) {
         </div>
       </div>
 
-      {/* Right: Live Pill, Notifications Bell, Theme Toggle, Quick Demo Role Switcher + Sign Out */}
+      {/* Right: Sync Bridge Pill, Live Pill, Notifications Bell, Theme Toggle, Quick Demo Role Switcher + Sign Out */}
       <div className="flex shrink-0 items-center gap-2">
+        {/* Live Web <-> Mobile Demo Sync Bridge Toggle */}
+        <button
+          type="button"
+          onClick={toggleSync}
+          title="Toggle live local Web <-> Mobile sync bridge (/api/demo-sync)"
+          className={cn(
+            "fp-telemetry hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition-all xl:inline-flex",
+            syncEnabled && syncStatus === "connected"
+              ? "border-cyan-500/40 bg-cyan-500/12 text-cyan-700 dark:text-cyan-300"
+              : syncEnabled && syncStatus === "offline"
+                ? "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-300"
+                : "border-border bg-muted/40 text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <RefreshCw
+            className={cn(
+              "size-3",
+              syncEnabled && syncStatus === "connected" && "animate-spin [animation-duration:6s]",
+            )}
+          />
+          {syncEnabled
+            ? syncStatus === "connected"
+              ? "SYNC LIVE"
+              : "SYNC OFFLINE"
+            : "SYNC OFF"}
+        </button>
+
         {/* Live Telemetry Status Pill */}
         <Link
           href="/trips"

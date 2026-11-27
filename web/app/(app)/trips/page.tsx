@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarClock, Radar, Route } from "lucide-react";
+import { CalendarClock, Printer, Radar, Route } from "lucide-react";
 import { toast } from "sonner";
 import { RoutePlayback } from "@/components/route-playback";
 import { BookingsPanel } from "@/components/trips/bookings-panel";
@@ -22,6 +22,8 @@ import { ObdDiagnosticsStrip } from "@/components/trips/obd-diagnostics-strip";
 import { TelemetryInspector } from "@/components/trips/telemetry-inspector";
 import { TripChecklistDialog } from "@/components/trips/trip-checklist-dialog";
 import { TripHistoryTable } from "@/components/trips/trip-history-table";
+import { WaypointPodDialog } from "@/components/trips/waypoint-pod-dialog";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +43,7 @@ import {
   lerpAngle,
 } from "@/lib/geo-sim";
 import { formatDateTime } from "@/lib/format";
+import { openPrintableTripManifest } from "@/lib/trip-manifest-print";
 import { can } from "@/lib/rbac";
 import {
   getScopedBookings,
@@ -53,6 +56,7 @@ import type {
   Trip,
   TripBooking,
   TripChecklist,
+  TripWaypoint,
 } from "@/types";
 
 interface MutableSimEntry {
@@ -119,10 +123,12 @@ function TripsTrackingContent() {
   );
   const applySimulationTick = useFleetStore((s) => s.applySimulationTick);
   const addFleetAlert = useFleetStore((s) => s.addFleetAlert);
+  const completeWaypointPod = useFleetStore((s) => s.completeWaypointPod);
 
   const [activeTab, setActiveTab] = useState<string>(
     queryTab === "bookings" || queryTab === "geofences" ? queryTab : "bookings"
   );
+  const [podWaypoint, setPodWaypoint] = useState<TripWaypoint | null>(null);
   const [frames, setFrames] = useState<Record<string, LiveVehicleFrame>>({});
   const [activeBanner, setActiveBanner] = useState<GeofenceBannerEvent | null>(
     null
@@ -497,17 +503,14 @@ function TripsTrackingContent() {
               selectedVehicle={selectedVehicle}
               frame={frames[effectiveSelectedId]}
               frames={frames}
+              canOperate={canOperateTrips}
+              pendingWaypoint={selectedActiveTrip?.waypoints?.find(
+                (wp) => !wp.arrivedAt
+              )}
+              onCapturePod={(wp) => setPodWaypoint(wp)}
               onSelectVehicle={setSelectedVehicle}
-              onStartTrip={
-                canOperateTrips
-                  ? handleStartTrip
-                  : () => toast.info("Only the assigned driver can start this trip.")
-              }
-              onEndTrip={
-                canOperateTrips
-                  ? handleEndTrip
-                  : () => toast.info("Only the assigned driver can end this trip.")
-              }
+              onStartTrip={handleStartTrip}
+              onEndTrip={handleEndTrip}
             />
           </div>
         </div>
@@ -588,6 +591,20 @@ function TripsTrackingContent() {
         onConfirm={handleChecklistConfirm}
       />
 
+      {/* Proof of Delivery (POD) Digital Signature Dialog */}
+      <WaypointPodDialog
+        waypoint={podWaypoint}
+        onOpenChange={(open) => {
+          if (!open) setPodWaypoint(null);
+        }}
+        onSavePod={(waypointId, pod) => {
+          completeWaypointPod(waypointId, pod);
+          toast.success(
+            `POD captured and signed by ${pod.recipientName}. Stop marked delivered!`
+          );
+        }}
+      />
+
       {/* Interactive Trip Route Playback Modal */}
       <Dialog
         open={selectedHistoryTrip !== null}
@@ -599,15 +616,40 @@ function TripsTrackingContent() {
           {selectedHistoryTrip ? (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedHistoryTrip.purpose}</DialogTitle>
-                <DialogDescription>
-                  {vehiclesById.get(selectedHistoryTrip.vehicleId)?.name ??
-                    "Unknown vehicle"}{" "}
-                  · {formatDateTime(selectedHistoryTrip.startedAt)}
-                  {selectedHistoryTrip.driverId
-                    ? ` · Driver: ${driversById.get(selectedHistoryTrip.driverId)?.name ?? "Unknown"}`
-                    : ""}
-                </DialogDescription>
+                <div className="flex flex-wrap items-start justify-between gap-2 pr-6">
+                  <div>
+                    <DialogTitle>{selectedHistoryTrip.purpose}</DialogTitle>
+                    <DialogDescription>
+                      {vehiclesById.get(selectedHistoryTrip.vehicleId)?.name ??
+                        "Unknown vehicle"}{" "}
+                      · {formatDateTime(selectedHistoryTrip.startedAt)}
+                      {selectedHistoryTrip.driverId
+                        ? ` · Driver: ${driversById.get(selectedHistoryTrip.driverId)?.name ?? "Unknown"}`
+                        : ""}
+                    </DialogDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const ok = openPrintableTripManifest(
+                        selectedHistoryTrip,
+                        vehiclesById.get(selectedHistoryTrip.vehicleId),
+                        selectedHistoryTrip.driverId
+                          ? driversById.get(selectedHistoryTrip.driverId)
+                          : undefined
+                      );
+                      if (!ok) {
+                        toast.error("Allow popups to open the printable PDF manifest.");
+                      }
+                    }}
+                    className="gap-1.5 rounded-xl"
+                  >
+                    <Printer className="size-3.5 text-primary" />
+                    Print / PDF Manifest
+                  </Button>
+                </div>
               </DialogHeader>
 
               <RoutePlayback

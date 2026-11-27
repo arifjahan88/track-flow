@@ -219,6 +219,11 @@ export interface FleetState extends FleetDataSnapshot {
     bookingId: string,
     preTripChecklist?: TripChecklist
   ) => ActionResult;
+  rateCompletedBooking: (
+    bookingId: string,
+    rating: number,
+    feedback?: string
+  ) => void;
   updateBookingStatus: (
     id: string,
     status: TripBooking["status"],
@@ -1228,6 +1233,31 @@ export const useFleetStore = create<FleetState>()(
       removeBooking: (id) => {
         set((state) => ({
           bookings: state.bookings.filter((b) => b.id !== id),
+        }));
+      },
+
+      rateCompletedBooking: (bookingId, rating, feedback) => {
+        const clamped = Math.max(1, Math.min(5, Math.round(rating)));
+        const target = get().bookings.find((b) => b.id === bookingId);
+        set((state) => ({
+          bookings: state.bookings.map((b) =>
+            b.id === bookingId
+              ? {
+                  ...b,
+                  rating: clamped,
+                  feedback: feedback?.trim() || b.feedback,
+                }
+              : b
+          ),
+          auditLogs: [
+            makeAudit(
+              "booking.rated",
+              "booking",
+              `Rated completed trip "${target?.purpose ?? bookingId}" ${clamped}/5 stars`,
+              bookingId
+            ),
+            ...state.auditLogs,
+          ].slice(0, 250),
         }));
       },
 

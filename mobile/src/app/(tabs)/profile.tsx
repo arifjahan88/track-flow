@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ThemePreferenceSelector } from "@/components/ui/theme-toggle";
 import { Fonts, Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { useMobileDemoSync } from "@/hooks/use-demo-sync";
 import {
   DAY_OF_WEEK_LABELS,
   computeDriverSafetyScore,
@@ -35,6 +36,11 @@ import { useFleetStore } from "@/store/fleet-store";
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const {
+    enabled: syncEnabled,
+    status: syncStatus,
+    toggleEnabled: toggleSync,
+  } = useMobileDemoSync();
 
   const users = useAuthStore((s) => s.users);
   const currentUserId = useAuthStore((s) => s.currentUserId);
@@ -436,6 +442,25 @@ export default function ProfileScreen() {
           ) : null}
 
           <View style={styles.footerBtns}>
+            <Button
+              label={
+                syncEnabled
+                  ? syncStatus === "connected"
+                    ? "● Live Web Sync: ON"
+                    : "○ Web Sync: Waiting..."
+                  : "Enable Live Web Sync"
+              }
+              variant={syncEnabled ? "primary" : "secondary"}
+              size="md"
+              style={styles.flex}
+              onPress={() => {
+                triggerMediumHaptic();
+                toggleSync();
+              }}
+            />
+          </View>
+
+          <View style={[styles.footerBtns, { marginTop: 8 }]}>
             {can(activeRole, "audit:view") ? (
               <Button
                 label={

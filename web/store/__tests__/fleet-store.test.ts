@@ -270,6 +270,16 @@ describe("fleet store rules", () => {
       .getState()
       .vehicles.find((v) => v.id === availVeh.id)!;
     expect(returnedVeh.status).toBe("available");
+
+    // 6. Employee rates the completed booking (5 stars)
+    useFleetStore
+      .getState()
+      .rateCompletedBooking(created.id, 5, "Smooth and punctual ride!");
+    const ratedBooking = useFleetStore
+      .getState()
+      .bookings.find((b) => b.id === created.id)!;
+    expect(ratedBooking.rating).toBe(5);
+    expect(ratedBooking.feedback).toBe("Smooth and punctual ride!");
   });
 
   it("enforces role-wise permissions and route scoping for employee and admin roles", () => {
