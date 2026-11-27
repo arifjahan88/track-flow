@@ -52,16 +52,10 @@ export default function DashboardPage() {
   const totalUnits = vehicles.length;
   const inTripCount = vehicles.filter((v) => v.status === "on_trip").length;
   const standbyCount = vehicles.filter((v) => (v.status ?? "available") === "available").length;
-  const maintenanceCount = vehicles.filter((v) => v.status === "under_maintenance").length;
-  const inactiveCount = vehicles.filter(
-    (v) => v.status === "out_of_service" || v.status === "decommissioned",
-  ).length;
 
   const totalDistanceKm = trips.reduce((sum, t) => sum + t.distanceKm, 0);
   const unreadAlerts = alerts.filter((a) => !a.read).length;
   const criticalAlerts = alerts.filter((a) => a.severity === "critical").length;
-
-  const pct = (n: number) => (totalUnits > 0 ? Math.round((n / totalUnits) * 100) : 0);
 
   return (
     <div className="space-y-5">
@@ -226,75 +220,6 @@ export default function DashboardPage() {
       </div>
 
       {/* Fleet Status Distribution Segmented Bar */}
-      <Card className="fp-glass rounded-2xl">
-        <CardContent className="space-y-3 p-5">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Fleet Status Distribution</p>
-              <p className="text-xs text-muted-foreground">
-                Live operational availability across all {totalUnits} units
-              </p>
-            </div>
-            <div className="fp-telemetry flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-cyan-500" />
-                In Trip:{" "}
-                <strong className="text-foreground">
-                  {inTripCount} ({pct(inTripCount)}%)
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-500" />
-                Active:{" "}
-                <strong className="text-foreground">
-                  {standbyCount} ({pct(standbyCount)}%)
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-amber-500" />
-                Maintenance:{" "}
-                <strong className="text-foreground">
-                  {maintenanceCount} ({pct(maintenanceCount)}%)
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-slate-400" />
-                Inactive:{" "}
-                <strong className="text-foreground">
-                  {inactiveCount} ({pct(inactiveCount)}%)
-                </strong>
-              </span>
-            </div>
-          </div>
-
-          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-            {inTripCount > 0 ? (
-              <div
-                className="h-full bg-cyan-500 transition-all duration-500"
-                style={{ width: `${pct(inTripCount)}%` }}
-              />
-            ) : null}
-            {standbyCount > 0 ? (
-              <div
-                className="h-full bg-emerald-500 transition-all duration-500"
-                style={{ width: `${pct(standbyCount)}%` }}
-              />
-            ) : null}
-            {maintenanceCount > 0 ? (
-              <div
-                className="h-full bg-amber-500 transition-all duration-500"
-                style={{ width: `${pct(maintenanceCount)}%` }}
-              />
-            ) : null}
-            {inactiveCount > 0 ? (
-              <div
-                className="h-full bg-slate-400 transition-all duration-500"
-                style={{ width: `${pct(inactiveCount)}%` }}
-              />
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Analytics Row: Area Chart + Status Donut */}
       <FleetCharts vehicles={vehicles} trips={trips} fuelLogs={fuelLogs} />
